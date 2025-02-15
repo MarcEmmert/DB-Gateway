@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <h2>Administrator-Bereich</h2>
+        <div class="row mt-4">
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Benutzerverwaltung</h5>
+                        <p class="card-text">Verwalten Sie Benutzerkonten und Berechtigungen.</p>
+                        <a href="{{ url_for('admin.user_list') }}" class="btn btn-primary">Zur Benutzerverwaltung</a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Geräteverwaltung</h5>
+                        <p class="card-text">Verwalten Sie IoT-Geräte und deren Zuordnungen.</p>
+                        <a href="{{ url_for('admin.device_list') }}" class="btn btn-primary">Zur Geräteverwaltung</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
