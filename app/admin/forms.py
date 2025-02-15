@@ -1,6 +1,6 @@
 from flask_wtf import FlaskForm
 from wtforms import StringField, BooleanField, SelectField, TextAreaField, PasswordField, SubmitField
-from wtforms.validators import DataRequired, Email, Length, Optional
+from wtforms.validators import DataRequired, Email, Length, Optional, ValidationError
 from app.models import User
 
 class UserForm(FlaskForm):
@@ -28,4 +28,4 @@ class DeviceForm(FlaskForm):
 
     def __init__(self, *args, **kwargs):
         super(DeviceForm, self).__init__(*args, **kwargs)
-        self.owner_id.choices = [(u.id, u.username) for u in User.query.all()]
+        self.owner_id.choices = [(user.id, user.username) for user in User.query.all()]

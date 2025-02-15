@@ -1,33 +1,40 @@
-# IoT Temperature Monitoring und Relay Control System
+# IoT Gateway
 
-Ein webbasiertes System zur Überwachung von Temperaturdaten und Steuerung von Relais mittels ESP32-Geräten.
+Ein PHP-basiertes Gateway für IoT-Geräte mit MQTT-Integration.
 
 ## Funktionen
 
-- Temperaturüberwachung von mehreren ESP32-Geräten
-- Relais-Fernsteuerung
-- Statusüberwachung von Kontakten
-- Benutzerverwaltung mit mehreren Clients pro Benutzer
-- Responsive Weboberfläche
-- REST-API für mobile Anwendungen
+- Benutzer-Verwaltung mit Login-System
+- Mehrere ESP32-Clients pro Benutzer
+- Temperatur-Aufzeichnung und Visualisierung
+- Relais-Steuerung
+- Status-Kontakt-Überwachung
+- Mobile App-Unterstützung via API
+- MQTT-Integration
+
+## Projektstruktur
+
+/var/www/html/iotgateway/
+├── api/                    # API-Endpunkte für Mobile App
+├── assets/                 # CSS, JavaScript, Bilder
+├── database/              # Datenbank-Schema und Migrations
+├── includes/              # PHP-Klassen und Funktionen
+├── logs/                  # Log-Dateien
+├── templates/             # HTML-Templates
+└── vendor/                # Composer-Abhängigkeiten
 
 ## Installation
 
-1. Python 3.8+ installieren
-2. Abhängigkeiten installieren:
-   ```bash
-   pip install -r requirements.txt
-   ```
-3. MySQL-Datenbank einrichten
-4. Umgebungsvariablen in `.env` konfigurieren
-5. Server starten:
-   ```bash
-   python run.py
-   ```
+Siehe [INSTALL.md](INSTALL.md) für detaillierte Installationsanweisungen.
 
-## Systemanforderungen
+## ESP32-Integration
 
-- Ubuntu Server 24.04
-- Python 3.8+
-- MySQL Server
-- ESP32 WROOM32 Geräte
+Siehe [ESP32.md](ESP32.md) für die ESP32-Firmware und Einrichtung.
+
+## Mobile App
+
+Die mobile App ist als separates Repository verfügbar.
+
+## Lizenz
+
+MIT License

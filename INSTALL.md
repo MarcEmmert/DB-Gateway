@@ -1,296 +1,221 @@
-# IoT Gateway - Installationsanleitung
-
-## Inhaltsverzeichnis
-1. [Systemvoraussetzungen](#1-systemvoraussetzungen)
-2. [Grundinstallation](#2-grundinstallation)
-3. [MySQL Einrichtung](#3-mysql-einrichtung)
-4. [Anwendungsinstallation](#4-anwendungsinstallation)
-5. [Konfiguration](#5-konfiguration)
-6. [Dienste einrichten](#6-dienste-einrichten)
-7. [Sicherheit](#7-sicherheit)
-8. [Erste Anmeldung](#8-erste-anmeldung)
-9. [Fehlerbehebung](#9-fehlerbehebung)
-
-## 1. Systemvoraussetzungen
-
-### Hardware-Anforderungen
-* Mindestens 2 CPU-Kerne
-* Mindestens 2 GB RAM
-* Mindestens 20 GB Festplattenspeicher
-
-### Software-Anforderungen
-* Ubuntu Server 24.04 LTS
-* Python 3.12
-* MySQL 8.0
-* MQTT Broker (Mosquitto)
-* Nginx
-* Git
-
-## 2. Grundinstallation
-
-### 2.1 System aktualisieren
-
-    # System auf den neuesten Stand bringen
-    $ sudo apt update
-    $ sudo apt upgrade -y
-
-    # Zeitzone einstellen
-    $ sudo timedatectl set-timezone Europe/Berlin
-
-### 2.2 Benötigte Pakete installieren
-
-    # Grundlegende Pakete
-    $ sudo apt install -y python3 python3-venv python3-dev python3-pip \
-        mysql-server mosquitto mosquitto-clients \
-        git nginx supervisor \
-        build-essential libssl-dev libffi-dev
-
-    # Prüfen der Installationen
-    $ python3 --version
-    $ mysql --version
-    $ nginx -v
-    $ supervisord -v
-
-## 3. MySQL Einrichtung
-
-### 3.1 MySQL absichern
-
-    # MySQL secure installation durchführen
-    $ sudo mysql_secure_installation
-
-Antworten Sie wie folgt:
-* Set up VALIDATE PASSWORD component? → YES
-* Password validation policy level → 2 (STRONG)
-* New root password → [Ihr sicheres Passwort]
-* Remove anonymous users? → YES
-* Disallow root login remotely? → YES
-* Remove test database? → YES
-* Reload privilege tables now? → YES
-
-### 3.2 Datenbank und Benutzer erstellen
-
-    # MySQL als Root starten
-    $ sudo mysql
-
-Im MySQL-Terminal:
-
-    mysql> CREATE DATABASE iot_gateway CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-    mysql> CREATE USER 'iot_user'@'localhost' IDENTIFIED BY 'IhrSicheresPasswort';
-    mysql> GRANT ALL PRIVILEGES ON iot_gateway.* TO 'iot_user'@'localhost';
-    mysql> FLUSH PRIVILEGES;
-    mysql> EXIT;
-
-Prüfen Sie den Zugriff:
-
-    $ mysql -u iot_user -p'IhrSicheresPasswort' -e "SHOW DATABASES;"
-
-## 4. Anwendungsinstallation
-
-### 4.1 Anwendung herunterladen
-
-    # Git Repository klonen
-    $ cd /home/administrator
-    $ git clone https://github.com/IhrBenutzername/DB-Gateway.git iot-gateway
-    $ cd iot-gateway
-
-    # Erstellen Sie die requirements.txt
-    $ nano requirements.txt
-
-Fügen Sie folgende Abhängigkeiten ein:
-
-    Flask==3.0.0
-    Flask-SQLAlchemy==3.1.1
-    Flask-Login==0.6.3
-    Flask-WTF==1.2.1
-    mysql-connector-python==8.2.0
-    python-dotenv==1.0.0
-    Flask-MQTT==1.1.1
-    Flask-SocketIO==5.3.6
-    PyJWT==2.8.0
-    bcrypt==4.1.2
-    Flask-Migrate==4.0.5
-
-### 4.2 Python-Umgebung einrichten
-
-    # Virtuelle Umgebung erstellen und aktivieren
-    $ python3 -m venv venv
-    $ source venv/bin/activate
-
-    # Pip aktualisieren und Abhängigkeiten installieren
-    (venv)$ pip install --upgrade pip
-    (venv)$ pip install -r requirements.txt
-    (venv)$ pip install gunicorn
-
-    # Gunicorn-Installation prüfen
-    (venv)$ which gunicorn
-    # Sollte /home/administrator/iot-gateway/venv/bin/gunicorn anzeigen
-
-## 5. Konfiguration
-
-### 5.1 Umgebungsvariablen einrichten
-
-    # .env Datei erstellen
-    $ nano .env
-
-Fügen Sie folgendes ein:
-
-    # Flask Konfiguration
-    FLASK_APP=run.py
-    FLASK_ENV=production
-    SECRET_KEY=IhrSichererSchlüssel
-
-    # Datenbank
-    DATABASE_URL=mysql://iot_user:IhrSicheresPasswort@localhost/iot_gateway
-
-    # MQTT Broker
-    MQTT_BROKER_URL=localhost
-    MQTT_BROKER_PORT=1883
-    MQTT_USERNAME=mqtt_user
-    MQTT_PASSWORD=IhrMQTTPasswort
-    MQTT_KEEPALIVE=60
-
-    # Logging
-    LOG_LEVEL=INFO
-    LOG_FILE=/var/log/iot-gateway/app.log
-
-### 5.2 Verzeichnisse und Berechtigungen
-
-    # Log-Verzeichnis erstellen
-    $ sudo mkdir -p /var/log/iot-gateway
-    $ sudo chown -R administrator:administrator /var/log/iot-gateway
-
-    # Anwendungsberechtigungen setzen
-    $ sudo chown -R administrator:administrator /home/administrator/iot-gateway
-    $ sudo chmod -R 755 /home/administrator/iot-gateway
-
-    # Berechtigungen prüfen
-    $ ls -la /var/log/iot-gateway
-    $ ls -la /home/administrator/iot-gateway
-
-## 6. Dienste einrichten
-
-### 6.1 Supervisor Konfiguration
-
-    # Supervisor Konfigurationsdatei erstellen
-    $ sudo nano /etc/supervisor/conf.d/iot-gateway.conf
-
-Fügen Sie folgendes ein:
-
-    [program:iot-gateway]
-    directory=/home/administrator/iot-gateway
-    command=/home/administrator/iot-gateway/venv/bin/gunicorn --workers 4 --bind unix:/tmp/iot-gateway.sock run:app
-    user=administrator
-    autostart=true
-    autorestart=true
-    stopasgroup=true
-    killasgroup=true
-    stderr_logfile=/var/log/iot-gateway/supervisor.err.log
-    stdout_logfile=/var/log/iot-gateway/supervisor.out.log
-    environment=
-        PYTHONPATH="/home/administrator/iot-gateway",
-        PATH="/home/administrator/iot-gateway/venv/bin"
-
-Supervisor neuladen:
-
-    $ sudo supervisorctl reread
-    $ sudo supervisorctl update
-    $ sudo supervisorctl status iot-gateway
-    # Sollte "RUNNING" anzeigen
-
-### 6.2 Nginx Konfiguration
-
-    # Nginx Konfigurationsdatei erstellen
-    $ sudo nano /etc/nginx/sites-available/iot-gateway
-
-Fügen Sie folgendes ein:
-
-    server {
-        listen 80;
-        server_name _;
-
-        access_log /var/log/nginx/iot-gateway.access.log;
-        error_log /var/log/nginx/iot-gateway.error.log;
-
-        location / {
-            proxy_pass http://unix:/tmp/iot-gateway.sock;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-
-        location /static {
-            alias /home/administrator/iot-gateway/app/static;
-            expires 30d;
-        }
-    }
-
-Nginx aktivieren:
-
-    # Symlink erstellen
-    $ sudo ln -s /etc/nginx/sites-available/iot-gateway /etc/nginx/sites-enabled/
-    
-    # Default-Konfiguration entfernen
-    $ sudo rm -f /etc/nginx/sites-enabled/default
-    
-    # Konfiguration testen
-    $ sudo nginx -t
-    
-    # Nginx neustarten
-    $ sudo systemctl restart nginx
-    
-    # Status prüfen
-    $ sudo systemctl status nginx
-
-## 7. Sicherheit
-
-### 7.1 Firewall einrichten
-
-    # UFW Regeln erstellen
-    $ sudo ufw default deny incoming
-    $ sudo ufw default allow outgoing
-    $ sudo ufw allow ssh
-    $ sudo ufw allow 'Nginx Full'
-    $ sudo ufw allow 1883
-    
-    # Firewall aktivieren
-    $ sudo ufw enable
-    
-    # Status prüfen
-    $ sudo ufw status
-
-## 8. Erste Anmeldung
-
-Nach erfolgreicher Installation können Sie sich anmelden mit:
-* Benutzername: admin
-* Passwort: admin123
-
-⚠️ WICHTIG: Ändern Sie das Admin-Passwort sofort nach der ersten Anmeldung!
-
-## 9. Fehlerbehebung
-
-### 9.1 Häufige Probleme
-
-Problem: Supervisor zeigt FATAL
-```
-$ sudo supervisorctl status iot-gateway
-→ Prüfen Sie die Pfade und Berechtigungen:
-$ ls -l /home/administrator/iot-gateway/venv/bin/gunicorn
-$ sudo chown -R administrator:administrator /home/administrator/iot-gateway
+# IoT Gateway Installation Guide
+
+## Systemvoraussetzungen
+- Ubuntu Server 24.04 LTS
+- MariaDB 10.6 oder höher
+- PHP 8.3 oder höher
+- Apache2
+- Mosquitto MQTT Broker
+
+## 1. System-Pakete aktualisieren
+
+```bash
+sudo apt update
+sudo apt upgrade -y
 ```
 
-Problem: 502 Bad Gateway
-```
-$ tail -f /var/log/nginx/error.log
-→ Prüfen Sie den Socket:
-$ ls -l /tmp/iot-gateway.sock
-→ Prüfen Sie die Supervisor-Logs:
-$ tail -f /var/log/iot-gateway/supervisor.err.log
+## 2. PHP und Apache Installation
+
+Zuerst fügen wir das Ondřej Surý's PPA Repository hinzu, das die aktuellen PHP-Versionen enthält:
+
+```bash
+sudo apt install software-properties-common
+sudo add-apt-repository ppa:ondrej/php
+sudo apt update
 ```
 
-Problem: Datenbank-Verbindungsfehler
+Dann installieren wir PHP und die benötigten Erweiterungen:
+
+```bash
+sudo apt install -y apache2 php8.3 php8.3-mysql php8.3-mbstring php8.3-xml php8.3-curl libapache2-mod-php8.3
 ```
-$ mysql -u iot_user -p
-→ Prüfen Sie die Berechtigungen:
-$ sudo mysql -e "SHOW GRANTS FOR 'iot_user'@'localhost';"
+
+## 3. MariaDB Installation
+
+```bash
+sudo apt install -y mariadb-server
+sudo mysql_secure_installation
 ```
+
+## 4. Mosquitto MQTT Broker Installation
+
+```bash
+sudo apt install -y mosquitto mosquitto-clients
+```
+
+Mosquitto konfigurieren:
+
+```bash
+sudo nano /etc/mosquitto/conf.d/default.conf
+```
+
+Fügen Sie folgende Konfiguration hinzu:
+```
+listener 1883
+allow_anonymous false
+password_file /etc/mosquitto/passwd
+```
+
+Benutzer für MQTT erstellen:
+```bash
+sudo mosquitto_passwd -c /etc/mosquitto/passwd mqtt_user
+```
+
+Mosquitto neustarten:
+```bash
+sudo systemctl restart mosquitto
+```
+
+## 5. Datenbank einrichten
+
+```bash
+sudo mysql -u root
+```
+
+In der MariaDB-Konsole:
+```sql
+CREATE DATABASE iotgateway;
+CREATE USER 'iotuser'@'localhost' IDENTIFIED BY 'IhrSicheresPasswort';
+GRANT ALL PRIVILEGES ON iotgateway.* TO 'iotuser'@'localhost';
+FLUSH PRIVILEGES;
+EXIT;
+```
+
+## 6. Anwendung installieren
+
+Anwendungsverzeichnis erstellen:
+```bash
+sudo mkdir -p /var/www/html/iotgateway
+```
+
+Wählen Sie eine der folgenden Methoden, um die Anwendung zu installieren:
+
+### Option A: Via Git (empfohlen)
+```bash
+cd /var/www/html/iotgateway
+sudo git clone https://github.com/IhrUsername/iot-gateway.git .
+```
+
+### Option B: Via SFTP/SCP
+1. Auf Ihrem lokalen Computer:
+```bash
+scp -r /pfad/zu/iot-gateway/* benutzer@server:/tmp/iotgateway/
+```
+
+2. Auf dem Server:
+```bash
+sudo mv /tmp/iotgateway/* /var/www/html/iotgateway/
+```
+
+### Option C: Manuell
+1. Laden Sie das neueste Release von der Projekt-Website herunter
+2. Entpacken Sie es in `/var/www/html/iotgateway`
+
+Nach der Installation:
+```bash
+sudo chown -R www-data:www-data /var/www/html/iotgateway
+sudo cp /var/www/html/iotgateway/config.example.php /var/www/html/iotgateway/config.php
+sudo nano /var/www/html/iotgateway/config.php
+```
+
+Datenbank initialisieren:
+```bash
+sudo mysql iotgateway < /var/www/html/iotgateway/database/schema.sql
+```
+
+## 7. Apache konfigurieren
+
+Virtual Host erstellen:
+```bash
+sudo nano /etc/apache2/sites-available/iotgateway.conf
+```
+
+Fügen Sie folgende Konfiguration hinzu:
+```apache
+<VirtualHost *:80>
+    ServerName iotgateway.local
+    DocumentRoot /var/www/html/iotgateway
+    
+    <Directory /var/www/html/iotgateway>
+        Options -Indexes +FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+    
+    ErrorLog ${APACHE_LOG_DIR}/iotgateway_error.log
+    CustomLog ${APACHE_LOG_DIR}/iotgateway_access.log combined
+</VirtualHost>
+```
+
+Apache-Konfiguration aktivieren:
+```bash
+sudo a2ensite iotgateway
+sudo a2enmod rewrite
+sudo systemctl restart apache2
+```
+
+## 8. Berechtigungen setzen
+
+```bash
+sudo chown -R www-data:www-data /var/www/html/iotgateway
+sudo chmod -R 755 /var/www/html/iotgateway
+sudo chmod -R 777 /var/www/html/iotgateway/logs
+```
+
+## 9. Admin-Benutzer erstellen
+
+Verbinden Sie sich mit der Datenbank:
+```bash
+sudo mysql iotgateway
+```
+
+Admin-Benutzer erstellen (ersetzen Sie 'IhrAdminPasswort' durch ein sicheres Passwort):
+```sql
+INSERT INTO users (username, password, email, is_admin) 
+VALUES ('admin', '$2y$10$YourHashedPasswordHere', 'admin@example.com', TRUE);
+```
+
+## 10. Firewall konfigurieren
+
+```bash
+sudo ufw allow 80/tcp
+sudo ufw allow 1883/tcp
+sudo ufw enable
+```
+
+## 11. System neustarten
+
+```bash
+sudo reboot
+```
+
+## Erste Anmeldung
+
+1. Öffnen Sie http://ihre-server-ip im Browser
+2. Melden Sie sich mit folgenden Zugangsdaten an:
+   - Benutzername: admin
+   - Passwort: IhrAdminPasswort
+
+## Fehlerbehebung
+
+1. Apache-Logs prüfen:
+```bash
+sudo tail -f /var/log/apache2/iotgateway_error.log
+```
+
+2. MQTT-Logs prüfen:
+```bash
+sudo tail -f /var/log/mosquitto/mosquitto.log
+```
+
+3. PHP-Logs prüfen:
+```bash
+sudo tail -f /var/log/php8.3-fpm.log
+```
+
+## Sicherheitshinweise
+
+1. Ändern Sie alle Standard-Passwörter
+2. Halten Sie das System aktuell
+3. Überwachen Sie die Log-Dateien
+4. Erstellen Sie regelmäßige Backups

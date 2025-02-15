@@ -1,0 +1,80 @@
+/* Allgemeine Stile */
+body {
+    background-color: #f8f9fa;
+}
+
+/* Card-Stile */
+.card {
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    transition: transform 0.2s;
+}
+
+.card:hover {
+    transform: translateY(-5px);
+}
+
+.card-header {
+    background-color: #fff;
+    border-bottom: 1px solid rgba(0,0,0,0.1);
+}
+
+/* Badge-Stile */
+.badge {
+    font-weight: 500;
+    padding: 0.5em 0.8em;
+}
+
+/* Button-Stile */
+.btn-primary {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+}
+
+.btn-primary:hover {
+    background-color: #0b5ed7;
+    border-color: #0b5ed7;
+}
+
+/* Navbar-Stile */
+.navbar {
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.navbar-brand {
+    font-weight: 600;
+}
+
+/* Temperatur-Anzeige */
+.temperature-display {
+    font-size: 2.5rem;
+    font-weight: 600;
+    color: #0d6efd;
+}
+
+/* Status-Anzeigen */
+.status-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 5px;
+}
+
+.status-online {
+    background-color: #198754;
+}
+
+.status-offline {
+    background-color: #dc3545;
+}
+
+/* Responsive Anpassungen */
+@media (max-width: 768px) {
+    .card {
+        margin-bottom: 1rem;
+    }
+    
+    .temperature-display {
+        font-size: 2rem;
+    }
+}
