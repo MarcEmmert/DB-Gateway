@@ -1,12 +1,12 @@
 #!/bin/bash
 
 # Konfiguration
-BACKUP_DIR="/var/backups/iotgateway"
+BACKUP_DIR="/var/backups/iotgateway-test"
 PROJECT_DIR="/var/www/html/iotgateway"
 DB_NAME="iotgateway"
 DB_USER="iotuser"
 DB_PASS="01937736e"
-NEXTCLOUD_URL="https://next.studio101.de/remote.php/dav/files/IoT/IoTGateway-Backups"
+NEXTCLOUD_URL="https://next.studio101.de/remote.php/dav/files/IoT/IoTGateway-Backups-Test"
 NEXTCLOUD_USER="IoT"
 NEXTCLOUD_PASS="!01TMZ18bla"
 
@@ -15,6 +15,9 @@ DATE=$(date +%Y%m%d_%H%M%S)
 
 # Backup-Verzeichnis erstellen
 mkdir -p "$BACKUP_DIR"
+
+# Nextcloud-Ordner erstellen (ignoriere Fehler, falls er bereits existiert)
+curl -X MKCOL -u "$NEXTCLOUD_USER:$NEXTCLOUD_PASS" "$NEXTCLOUD_URL" 2>/dev/null || true
 
 # MySQL-Dump erstellen
 mysqldump -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" > "$BACKUP_DIR/db_backup_$DATE.sql"
