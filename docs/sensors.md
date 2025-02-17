@@ -8,9 +8,10 @@
 - 5V Stromversorgung
 
 ### Sensoren und Aktoren
-- DHT22/DHT11 Temperatursensor
-- Relais-Module (optional)
-- Status-Kontakte (z.B. Reed-Kontakte, optional)
+- 2x DS18B20 (Dallas) Temperatursensoren
+- BMP180 Druck- und Temperatursensor
+- 4x Relais-Module
+- 4x Digitale Eingänge für Status-Kontakte
 - Verbindungskabel/Jumper-Wires
 
 ## 2. Software-Voraussetzungen
@@ -25,8 +26,10 @@
 Installieren Sie über den Arduino Library Manager:
 - PubSubClient (von Nick O'Leary)
 - ArduinoJson (von Benoit Blanchon)
-- DHT sensor library (von Adafruit)
-- Adafruit Unified Sensor (von Adafruit)
+- OneWire (von Paul Stoffregen)
+- DallasTemperature (von Miles Burton)
+- Wire (von Arduino)
+- Adafruit_BMP085 (von Adafruit)
 
 ## 3. ESP32-Code
 
@@ -34,7 +37,10 @@ Installieren Sie über den Arduino Library Manager:
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
-#include <DHT.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
+#include <Wire.h>
+#include <Adafruit_BMP085.h>
 
 // WiFi-Konfiguration
 const char* ssid = "IhrWLAN";
@@ -47,17 +53,19 @@ const char* mqtt_password = "IhrMQTTPasswort";
 const char* mqtt_topic = "esp32/IhrGeräteToken";  // Aus der Geräteverwaltung
 
 // Sensor-Konfiguration
-#define DHTPIN 4        // GPIO-Pin für DHT22
-#define DHTTYPE DHT22   // DHT22 (AM2302)
-DHT dht(DHTPIN, DHTTYPE);
+#define ONEWIRE_PIN 4    // DS18B20
+#define RELAY1_PIN 26    // Relais 1
+#define RELAY2_PIN 27    // Relais 2
+#define RELAY3_PIN 32    // Relais 3
+#define RELAY4_PIN 33    // Relais 4
+#define CONTACT1_PIN 13  // Kontakt 1
+#define CONTACT2_PIN 14  // Kontakt 2
+#define CONTACT3_PIN 15  // Kontakt 3
+#define CONTACT4_PIN 16  // Kontakt 4
 
-// Relais-Konfiguration
-#define RELAY1_PIN 16   // GPIO-Pin für Relais 1
-#define RELAY2_PIN 17   // GPIO-Pin für Relais 2
-
-// Status-Kontakt-Konfiguration
-#define CONTACT1_PIN 18 // GPIO-Pin für Kontakt 1
-#define CONTACT2_PIN 19 // GPIO-Pin für Kontakt 2
+// I2C Pins (BMP180)
+#define I2C_SDA 21
+#define I2C_SCL 22
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -91,6 +99,10 @@ void callback(char* topic, byte* payload, unsigned int length) {
       digitalWrite(RELAY1_PIN, state ? HIGH : LOW);
     } else if (relay == 2) {
       digitalWrite(RELAY2_PIN, state ? HIGH : LOW);
+    } else if (relay == 3) {
+      digitalWrite(RELAY3_PIN, state ? HIGH : LOW);
+    } else if (relay == 4) {
+      digitalWrite(RELAY4_PIN, state ? HIGH : LOW);
     }
   }
 }
@@ -116,11 +128,15 @@ void setup() {
   // GPIO-Pins konfigurieren
   pinMode(RELAY1_PIN, OUTPUT);
   pinMode(RELAY2_PIN, OUTPUT);
+  pinMode(RELAY3_PIN, OUTPUT);
+  pinMode(RELAY4_PIN, OUTPUT);
   pinMode(CONTACT1_PIN, INPUT_PULLUP);
   pinMode(CONTACT2_PIN, INPUT_PULLUP);
+  pinMode(CONTACT3_PIN, INPUT_PULLUP);
+  pinMode(CONTACT4_PIN, INPUT_PULLUP);
   
-  // DHT22 starten
-  dht.begin();
+  // I2C initialisieren
+  Wire.begin(I2C_SDA, I2C_SCL);
   
   setup_wifi();
   client.setServer(mqtt_server, 1883);
@@ -141,21 +157,35 @@ void loop() {
     StaticJsonDocument<200> doc;
     
     // Temperatur und Luftfeuchtigkeit lesen
-    float temp = dht.readTemperature();
-    float hum = dht.readHumidity();
+    OneWire oneWire(ONEWIRE_PIN);
+    DallasTemperature sensors(&oneWire);
+    sensors.requestTemperatures();
+    float temp1 = sensors.getTempCByIndex(0);
+    float temp2 = sensors.getTempCByIndex(1);
     
-    if (!isnan(temp) && !isnan(hum)) {
-      doc["temperature"] = temp;
-      doc["humidity"] = hum;
+    // BMP180 lesen
+    Adafruit_BMP085 bmp;
+    if (!bmp.begin()) {
+      Serial.println("BMP180 nicht gefunden!");
+    } else {
+      float pressure = bmp.readPressure();
+      float temp3 = bmp.readTemperature();
+      
+      doc["pressure"] = pressure;
+      doc["temp3"] = temp3;
     }
     
     // Status-Kontakte lesen
     doc["contact1"] = !digitalRead(CONTACT1_PIN);  // Invertiert für normale Logik
     doc["contact2"] = !digitalRead(CONTACT2_PIN);
+    doc["contact3"] = !digitalRead(CONTACT3_PIN);
+    doc["contact4"] = !digitalRead(CONTACT4_PIN);
     
     // Relais-Status
     doc["relay1"] = digitalRead(RELAY1_PIN);
     doc["relay2"] = digitalRead(RELAY2_PIN);
+    doc["relay3"] = digitalRead(RELAY3_PIN);
+    doc["relay4"] = digitalRead(RELAY4_PIN);
     
     // JSON serialisieren und senden
     char jsonBuffer[512];
@@ -167,27 +197,48 @@ void loop() {
 
 ## 4. Verkabelung
 
-### DHT22 Temperatursensor
-- VCC → 3.3V oder 5V
+### DS18B20 Temperatursensoren
+- VCC → 3.3V
 - DATA → GPIO4
 - GND → GND
+- 4.7kΩ Pull-up zwischen 3.3V und DATA
+
+### BMP180 Druck- und Temperatursensor
+- VCC → 3.3V
+- GND → GND
+- SCL → GPIO22
+- SDA → GPIO21
 
 ### Relais-Module
 - Relais 1:
   - VCC → 5V
   - GND → GND
-  - IN → GPIO16
+  - IN → GPIO26
 - Relais 2:
   - VCC → 5V
   - GND → GND
-  - IN → GPIO17
+  - IN → GPIO27
+- Relais 3:
+  - VCC → 5V
+  - GND → GND
+  - IN → GPIO32
+- Relais 4:
+  - VCC → 5V
+  - GND → GND
+  - IN → GPIO33
 
 ### Status-Kontakte
 - Kontakt 1:
-  - Ein Ende → GPIO18
+  - Ein Ende → GPIO13
   - Anderes Ende → GND
 - Kontakt 2:
-  - Ein Ende → GPIO19
+  - Ein Ende → GPIO14
+  - Anderes Ende → GND
+- Kontakt 3:
+  - Ein Ende → GPIO15
+  - Anderes Ende → GND
+- Kontakt 4:
+  - Ein Ende → GPIO16
   - Anderes Ende → GND
 
 ## 5. Konfiguration und Upload

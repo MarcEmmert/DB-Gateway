@@ -41,6 +41,21 @@ Willkommen zur Dokumentation des IoT Gateways. Dieses System ermöglicht die Ver
    - Authentifizierung
    - Beispiele
 
+## Server-Konfiguration
+
+### Backup-System
+Das System führt automatische tägliche Backups durch:
+- Zeitpunkt: Täglich um 2 Uhr nachts
+- Backup-Inhalt: Datenbank und Dateisystem
+- Speicherort: Nextcloud (IoTGateway-Backups-Test)
+- Aufbewahrung: 7 Tage
+
+### Server-spezifische Dateien
+Folgende Dateien sind server-spezifisch und werden nicht im Git-Repository gespeichert:
+- `config.php` - Lokale Konfiguration
+- `local-config/` - Server-spezifische Anpassungen
+- Verschiedene PHP-Dateien für Benutzer- und Geräteverwaltung
+
 ## Quick Start
 
 1. Folgen Sie der [Installationsanleitung](installation.md)

@@ -1,30 +1,10 @@
--- Benutzer-Tabelle
-CREATE TABLE users (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    username VARCHAR(50) NOT NULL UNIQUE,
-    password VARCHAR(255) NOT NULL,
-    email VARCHAR(100) NOT NULL UNIQUE,
-    is_admin BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+-- Backup der bestehenden Daten
+CREATE TABLE temp_temperatures AS SELECT * FROM temperatures;
+CREATE TABLE temp_relays AS SELECT * FROM relays;
+CREATE TABLE temp_status_contacts AS SELECT * FROM status_contacts;
 
--- Geräte-Tabelle
-CREATE TABLE devices (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(50) NOT NULL,
-    description TEXT,
-    user_id INT NOT NULL,
-    mqtt_topic VARCHAR(100) NOT NULL UNIQUE,
-    last_seen TIMESTAMP NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    INDEX idx_user_id (user_id),
-    INDEX idx_mqtt_topic (mqtt_topic)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- Sensor-Daten-Tabelle
+-- Temperaturtabelle umbenennen und neu erstellen
+DROP TABLE temperatures;
 CREATE TABLE sensor_data (
     id INT AUTO_INCREMENT PRIMARY KEY,
     device_id INT NOT NULL,
@@ -36,7 +16,13 @@ CREATE TABLE sensor_data (
     INDEX idx_sensor_type (sensor_type)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Relais-Tabelle
+-- Alte Temperaturdaten als DS18B20_1 importieren
+INSERT INTO sensor_data (device_id, sensor_type, value, timestamp)
+SELECT device_id, 'DS18B20_1', value, timestamp
+FROM temp_temperatures;
+
+-- Relais-Tabelle anpassen
+DROP TABLE relays;
 CREATE TABLE relays (
     id INT AUTO_INCREMENT PRIMARY KEY,
     device_id INT NOT NULL,
@@ -50,7 +36,19 @@ CREATE TABLE relays (
     INDEX idx_device_id (device_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Status-Kontakte-Tabelle
+-- Alte Relais als Nummer 1 importieren und restliche erstellen
+INSERT INTO relays (device_id, relay_number, name, state, last_changed, created_at)
+SELECT device_id, 1, name, state, last_changed, created_at
+FROM temp_relays;
+
+-- Restliche Relais (2-4) für existierende Geräte erstellen
+INSERT INTO relays (device_id, relay_number, name)
+SELECT DISTINCT r.device_id, n.number, CONCAT('Relais ', n.number)
+FROM temp_relays r
+CROSS JOIN (SELECT 2 AS number UNION SELECT 3 UNION SELECT 4) n;
+
+-- Status-Kontakte-Tabelle anpassen
+DROP TABLE status_contacts;
 CREATE TABLE status_contacts (
     id INT AUTO_INCREMENT PRIMARY KEY,
     device_id INT NOT NULL,
@@ -64,23 +62,26 @@ CREATE TABLE status_contacts (
     INDEX idx_device_id (device_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- API-Tokens-Tabelle für Mobile App
-CREATE TABLE api_tokens (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL,
-    token VARCHAR(255) NOT NULL UNIQUE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    last_used TIMESTAMP NULL,
-    expires_at TIMESTAMP NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    INDEX idx_token (token),
-    INDEX idx_user_id (user_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+-- Alte Kontakte als Nummer 1 importieren und restliche erstellen
+INSERT INTO status_contacts (device_id, contact_number, name, state, last_changed, created_at)
+SELECT device_id, 1, name, state, last_changed, created_at
+FROM temp_status_contacts;
 
--- Trigger für die Aktualisierung von last_seen in devices
+-- Restliche Kontakte (2-4) für existierende Geräte erstellen
+INSERT INTO status_contacts (device_id, contact_number, name)
+SELECT DISTINCT s.device_id, n.number, CONCAT('Kontakt ', n.number)
+FROM temp_status_contacts s
+CROSS JOIN (SELECT 2 AS number UNION SELECT 3 UNION SELECT 4) n;
+
+-- Trigger aktualisieren
+DROP TRIGGER IF EXISTS update_device_last_seen_temperature;
+DROP TRIGGER IF EXISTS update_device_last_seen_relay;
+DROP TRIGGER IF EXISTS update_device_last_seen_status;
+
 DELIMITER //
-CREATE TRIGGER update_device_last_seen_temperature
-AFTER INSERT ON temperatures
+
+CREATE TRIGGER update_device_last_seen_sensor
+AFTER INSERT ON sensor_data
 FOR EACH ROW
 BEGIN
     UPDATE devices SET last_seen = NEW.timestamp
@@ -103,15 +104,9 @@ BEGIN
     WHERE id = NEW.device_id;
 END;//
 
-CREATE TRIGGER update_device_last_seen_sensor
-AFTER INSERT ON sensor_data
-FOR EACH ROW
-BEGIN
-    UPDATE devices SET last_seen = CURRENT_TIMESTAMP
-    WHERE id = NEW.device_id;
-END;//
 DELIMITER ;
 
--- Beispiel-Admin-Benutzer (Passwort muss geändert werden!)
-INSERT INTO users (username, password, email, is_admin) VALUES 
-('admin', '$2y$10$YourHashedPasswordHere', 'admin@example.com', TRUE);
+-- Temporäre Tabellen löschen
+DROP TABLE temp_temperatures;
+DROP TABLE temp_relays;
+DROP TABLE temp_status_contacts;
