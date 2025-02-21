@@ -10,15 +10,16 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
-$user = new User();
-$device = new Device();
+$db = Database::getInstance();
+$user = new User($db);
+$deviceManager = new Device($db);  // Umbenennung zu deviceManager für Klarheit
 $current_user = $user->getById($_SESSION['user_id']);
 
 // Geräte des Benutzers laden
 if ($_SESSION['is_admin']) {
-    $devices = $device->getAll();
+    $devices = $deviceManager->getAll();
 } else {
-    $devices = $device->getByUser($_SESSION['user_id']);
+    $devices = $deviceManager->getByUser($_SESSION['user_id']);
 }
 
 include 'templates/header.php';
@@ -54,21 +55,56 @@ include 'templates/header.php';
                         <p class="text-muted"><?= htmlspecialchars($device['description']) ?></p>
                         
                         <?php
-                        $temps = $device->getTemperatures($device['id'], 1);
-                        $latest_temp = $temps[0] ?? null;
+                        $temps = $deviceManager->getTemperatures($device['id'], 4);  // Hole 4 Werte
                         ?>
                         
-                        <?php if ($latest_temp): ?>
-                            <h3 class="text-center"><?= number_format($latest_temp['value'], 1) ?>°C</h3>
-                            <p class="text-muted text-center">
-                                Letzte Messung: <?= date('H:i:s', strtotime($latest_temp['timestamp'])) ?>
-                            </p>
-                        <?php else: ?>
-                            <p class="text-center text-muted">Keine Temperaturdaten</p>
-                        <?php endif; ?>
+                        <div id="device-data-<?= $device['id'] ?>">
+                            <?php if (!empty($temps)): ?>
+                                <div class="row g-2">
+                                    <?php foreach ($temps as $temp): ?>
+                                        <div class="col-3 text-center">
+                                            <div class="border rounded p-2">
+                                                <h5 class="mb-0"><?= number_format($temp['value'], 1) ?><?= $temp['unit'] ?></h5>
+                                                <p class="text-muted small mb-0"><?= htmlspecialchars($temp['display_name']) ?></p>
+                                            </div>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            <?php else: ?>
+                                <p class="text-center text-muted">Keine Temperaturdaten</p>
+                            <?php endif; ?>
+                        </div>
+
+                        <script>
+                        function updateDeviceData<?= $device['id'] ?>() {
+                            fetch('api/get_device_data.php?device_id=<?= $device['id'] ?>')
+                                .then(response => response.json())
+                                .then(data => {
+                                    if (data.success && data.data.length > 0) {
+                                        let html = '<div class="row g-2">';
+                                        data.data.forEach(temp => {
+                                            html += `
+                                                <div class="col-3 text-center">
+                                                    <div class="border rounded p-2">
+                                                        <h5 class="mb-0">${parseFloat(temp.value).toFixed(1)}${temp.unit}</h5>
+                                                        <p class="text-muted small mb-0">${temp.display_name}</p>
+                                                    </div>
+                                                </div>
+                                            `;
+                                        });
+                                        html += '</div>';
+                                        document.getElementById('device-data-<?= $device['id'] ?>').innerHTML = html;
+                                    }
+                                })
+                                .catch(error => console.error('Error:', error));
+                        }
+
+                        // Aktualisiere alle 5 Sekunden
+                        setInterval(updateDeviceData<?= $device['id'] ?>, 5000);
+                        </script>
                         
                         <?php
-                        $relays = $device->getRelays($device['id']);
+                        $relays = $deviceManager->getRelays($device['id']);
                         if (!empty($relays)):
                         ?>
                             <hr>
@@ -101,7 +137,7 @@ function toggleRelay(deviceId, relayId) {
     fetch('api/toggle_relay.php', {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
         },
         body: JSON.stringify({
             device_id: deviceId,

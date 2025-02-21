@@ -2,21 +2,35 @@
 class User {
     private $db;
     
-    public function __construct() {
-        $this->db = Database::getInstance()->getConnection();
+    public function __construct($database = null) {
+        if ($database === null) {
+            $database = Database::getInstance();
+        }
+        $this->db = $database->getConnection();
     }
     
     public function authenticate($username, $password) {
-        $stmt = $this->db->prepare("SELECT * FROM users WHERE username = ?");
-        $stmt->execute([$username]);
-        $user = $stmt->fetch();
-        
-        if ($user && password_verify($password, $user['password'])) {
-            $_SESSION['user_id'] = $user['id'];
-            $_SESSION['is_admin'] = $user['is_admin'];
-            return true;
+        try {
+            $stmt = $this->db->prepare("SELECT * FROM users WHERE username = ?");
+            $stmt->execute([$username]);
+            $user = $stmt->fetch();
+            
+            error_log("Login attempt for user: " . $username);
+            
+            if ($user && password_verify($password, $user['password'])) {
+                error_log("Login successful for user: " . $username);
+                $_SESSION['user_id'] = $user['id'];
+                $_SESSION['is_admin'] = $user['is_admin'];
+                $_SESSION['username'] = $user['username'];
+                return true;
+            }
+            
+            error_log("Login failed for user: " . $username);
+            return false;
+        } catch (Exception $e) {
+            error_log("Database error during login: " . $e->getMessage());
+            return false;
         }
-        return false;
     }
     
     public function create($username, $password, $email, $is_admin = false) {

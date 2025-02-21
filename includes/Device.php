@@ -176,13 +176,13 @@ class Device {
     }
     
     public function getTemperatures($device_id, $limit = 24) {
-        $stmt = $this->db->prepare("
+        $query = "
             SELECT sd.value, sd.timestamp, sd.sensor_type,
                    COALESCE(sc.display_name,
                    CASE sd.sensor_type 
                        WHEN 'DS18B20_1' THEN 'Dallas 1'
                        WHEN 'DS18B20_2' THEN 'Dallas 2'
-                       WHEN 'BMP180_TEMP' THEN 'BMP180 Temp'
+                       WHEN 'BMP180_TEMP' THEN 'BMP180'
                        WHEN 'BMP180_PRESSURE' THEN 'Luftdruck'
                        ELSE sd.sensor_type
                    END) as display_name,
@@ -194,11 +194,16 @@ class Device {
             LEFT JOIN sensor_config sc ON sd.device_id = sc.device_id AND sd.sensor_type = sc.sensor_type
             WHERE sd.device_id = ? 
             AND sd.sensor_type IN ('DS18B20_1', 'DS18B20_2', 'BMP180_TEMP', 'BMP180_PRESSURE')
-            ORDER BY sd.timestamp DESC
+            AND sd.timestamp >= NOW() - INTERVAL 1 HOUR
+            ORDER BY sd.timestamp DESC, sd.sensor_type
             LIMIT ?
-        ");
+        ";
+        
+        $stmt = $this->db->prepare($query);
         $stmt->execute([$device_id, $limit]);
-        return $stmt->fetchAll();
+        $results = $stmt->fetchAll();
+        
+        return $results;
     }
     
     public function getRelays($device_id) {

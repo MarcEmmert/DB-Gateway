@@ -6,7 +6,8 @@ require_once __DIR__ . '/includes/User.php';
 $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $user = new User();
+    $db = Database::getInstance();
+    $user = new User($db);
     
     if ($user->authenticate($_POST['username'], $_POST['password'])) {
         header('Location: index.php');

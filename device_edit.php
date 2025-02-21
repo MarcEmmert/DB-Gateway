@@ -4,13 +4,18 @@ require_once __DIR__ . '/includes/Database.php';
 require_once __DIR__ . '/includes/User.php';
 require_once __DIR__ . '/includes/Device.php';
 
+// Konfiguration laden
+$config = require __DIR__ . '/config.php';
+
 // Überprüfen, ob der Benutzer eingeloggt ist
 if (!isset($_SESSION['user_id'])) {
     header('Location: login.php');
     exit;
 }
 
-$device = new Device();
+// Datenbankverbindung herstellen
+$db = Database::getInstance();
+$device = new Device($db);
 $error = '';
 $success = '';
 
