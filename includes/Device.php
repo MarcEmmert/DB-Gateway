@@ -8,7 +8,7 @@ class Device {
     
     private function getLatestSensorData($device_id, $sensor_type) {
         $stmt = $this->db->prepare("
-            SELECT sd.value, sd.timestamp,
+            SELECT sd.value, sd.timestamp, sd.sensor_type,
                    COALESCE(sc.display_name,
                    CASE sd.sensor_type 
                        WHEN 'DS18B20_1' THEN 'Dallas 1'
@@ -43,39 +43,13 @@ class Device {
         
         // Sensordaten für jedes Gerät laden
         foreach ($devices as &$device) {
-            $device['sensors'] = [];
-            
-            // DS18B20 Temperatursensoren
-            $temp1 = $this->getLatestSensorData($device['id'], 'DS18B20_1');
-            if ($temp1) {
-                $device['sensors']['DS18B20_1'] = $temp1;
-            }
-            
-            $temp2 = $this->getLatestSensorData($device['id'], 'DS18B20_2');
-            if ($temp2) {
-                $device['sensors']['DS18B20_2'] = $temp2;
-            }
-            
-            // BMP180 Sensoren
-            $bmp_temp = $this->getLatestSensorData($device['id'], 'BMP180_TEMP');
-            if ($bmp_temp) {
-                $device['sensors']['BMP180_TEMP'] = $bmp_temp;
-            }
-            
-            $pressure = $this->getLatestSensorData($device['id'], 'BMP180_PRESSURE');
-            if ($pressure) {
-                $device['sensors']['BMP180_PRESSURE'] = $pressure;
-            }
+            $device['sensors'] = $this->getTemperatures($device['id']);
         }
         
         return $devices;
     }
     
-    public function getAllForUser($user_id, $is_admin = false) {
-        if ($is_admin) {
-            return $this->getAll();
-        }
-        
+    public function getByUser($user_id) {
         $stmt = $this->db->prepare("
             SELECT d.*, u.username as owner_name,
                    (SELECT COUNT(*) FROM relays r WHERE r.device_id = d.id) as relay_count
@@ -89,29 +63,7 @@ class Device {
         
         // Sensordaten für jedes Gerät laden
         foreach ($devices as &$device) {
-            $device['sensors'] = [];
-            
-            // DS18B20 Temperatursensoren
-            $temp1 = $this->getLatestSensorData($device['id'], 'DS18B20_1');
-            if ($temp1) {
-                $device['sensors']['DS18B20_1'] = $temp1;
-            }
-            
-            $temp2 = $this->getLatestSensorData($device['id'], 'DS18B20_2');
-            if ($temp2) {
-                $device['sensors']['DS18B20_2'] = $temp2;
-            }
-            
-            // BMP180 Sensoren
-            $bmp_temp = $this->getLatestSensorData($device['id'], 'BMP180_TEMP');
-            if ($bmp_temp) {
-                $device['sensors']['BMP180_TEMP'] = $bmp_temp;
-            }
-            
-            $pressure = $this->getLatestSensorData($device['id'], 'BMP180_PRESSURE');
-            if ($pressure) {
-                $device['sensors']['BMP180_PRESSURE'] = $pressure;
-            }
+            $device['sensors'] = $this->getTemperatures($device['id']);
         }
         
         return $devices;
@@ -129,13 +81,60 @@ class Device {
     }
     
     public function create($name, $description, $user_id) {
-        $mqtt_topic = 'device/' . uniqid();
-        
-        $stmt = $this->db->prepare("
-            INSERT INTO devices (name, description, user_id, mqtt_topic)
-            VALUES (?, ?, ?, ?)
-        ");
-        return $stmt->execute([$name, $description, $user_id, $mqtt_topic]);
+        try {
+            $this->db->beginTransaction();
+            
+            $mqtt_topic = 'device/' . uniqid();
+            
+            // Erstelle das Gerät
+            $stmt = $this->db->prepare("
+                INSERT INTO devices (name, description, user_id, mqtt_topic)
+                VALUES (?, ?, ?, ?)
+            ");
+            $stmt->execute([$name, $description, $user_id, $mqtt_topic]);
+            $device_id = $this->db->lastInsertId();
+            
+            // Erstelle 4 Standard-Relais
+            for ($i = 1; $i <= 4; $i++) {
+                $relayName = "Relais " . $i;
+                $stmt = $this->db->prepare("
+                    INSERT INTO relays (device_id, relay_number, name, state)
+                    VALUES (?, ?, ?, 0)
+                ");
+                $stmt->execute([$device_id, $i, $relayName]);
+                
+                // Füge Relais-Konfiguration hinzu
+                $stmt = $this->db->prepare("
+                    INSERT INTO relay_config (device_id, relay_number, display_name)
+                    VALUES (?, ?, ?)
+                ");
+                $stmt->execute([$device_id, $i, $relayName]);
+            }
+            
+            // Erstelle 4 Standard-Kontakte
+            for ($i = 1; $i <= 4; $i++) {
+                $contactName = "Kontakt " . $i;
+                $stmt = $this->db->prepare("
+                    INSERT INTO status_contacts (device_id, contact_number, name, state)
+                    VALUES (?, ?, ?, 0)
+                ");
+                $stmt->execute([$device_id, $i, $contactName]);
+                
+                // Füge Kontakt-Konfiguration hinzu
+                $stmt = $this->db->prepare("
+                    INSERT INTO contact_config (device_id, contact_number, display_name)
+                    VALUES (?, ?, ?)
+                ");
+                $stmt->execute([$device_id, $i, $contactName]);
+            }
+            
+            $this->db->commit();
+            return true;
+        } catch (Exception $e) {
+            $this->db->rollBack();
+            error_log("Fehler beim Erstellen des Geräts: " . $e->getMessage());
+            return false;
+        }
     }
     
     public function updateDevice($id, $name, $description, $mqtt_topic) {
@@ -175,35 +174,18 @@ class Device {
         }
     }
     
-    public function getTemperatures($device_id, $limit = 24) {
-        $query = "
-            SELECT sd.value, sd.timestamp, sd.sensor_type,
-                   COALESCE(sc.display_name,
-                   CASE sd.sensor_type 
-                       WHEN 'DS18B20_1' THEN 'Dallas 1'
-                       WHEN 'DS18B20_2' THEN 'Dallas 2'
-                       WHEN 'BMP180_TEMP' THEN 'BMP180'
-                       WHEN 'BMP180_PRESSURE' THEN 'Luftdruck'
-                       ELSE sd.sensor_type
-                   END) as display_name,
-                   CASE sd.sensor_type 
-                       WHEN 'BMP180_PRESSURE' THEN 'hPa'
-                       ELSE '°C'
-                   END as unit
-            FROM sensor_data sd
-            LEFT JOIN sensor_config sc ON sd.device_id = sc.device_id AND sd.sensor_type = sc.sensor_type
-            WHERE sd.device_id = ? 
-            AND sd.sensor_type IN ('DS18B20_1', 'DS18B20_2', 'BMP180_TEMP', 'BMP180_PRESSURE')
-            AND sd.timestamp >= NOW() - INTERVAL 1 HOUR
-            ORDER BY sd.timestamp DESC, sd.sensor_type
-            LIMIT ?
-        ";
+    public function getTemperatures($device_id, $limit = 4) {
+        $sensors = ['DS18B20_1', 'DS18B20_2', 'BMP180_TEMP', 'BMP180_PRESSURE'];
+        $result = [];
         
-        $stmt = $this->db->prepare($query);
-        $stmt->execute([$device_id, $limit]);
-        $results = $stmt->fetchAll();
+        foreach ($sensors as $sensor_type) {
+            $data = $this->getLatestSensorData($device_id, $sensor_type);
+            if ($data) {
+                $result[] = $data;
+            }
+        }
         
-        return $results;
+        return $result;
     }
     
     public function getRelays($device_id) {
@@ -303,5 +285,60 @@ class Device {
             ON DUPLICATE KEY UPDATE display_name = VALUES(display_name)
         ");
         return $stmt->execute([$device_id, $contact_number, $display_name]);
+    }
+
+    public function getTemperatureHistory($device_id, $sensor_type, $timespan = '24h') {
+        try {
+            // Bestimme das Zeitintervall basierend auf dem Timespan
+            $interval = match($timespan) {
+                '1h' => 'INTERVAL 1 HOUR',
+                '8h' => 'INTERVAL 8 HOUR',
+                '24h' => 'INTERVAL 24 HOUR',
+                '7d' => 'INTERVAL 7 DAY',
+                '30d' => 'INTERVAL 30 DAY',
+                default => 'INTERVAL 24 HOUR'
+            };
+            
+            // Bestimme die Anzahl der Datenpunkte
+            $points = match($timespan) {
+                '1h' => 60,  // Ein Punkt pro Minute
+                '8h' => 96,  // Ein Punkt alle 5 Minuten
+                '24h' => 144, // Ein Punkt alle 10 Minuten
+                '7d' => 168,  // Ein Punkt pro Stunde
+                '30d' => 180, // Ein Punkt alle 4 Stunden
+                default => 144
+            };
+            
+            // SQL für die Abfrage der Temperaturdaten
+            $query = "
+                SELECT 
+                    timestamp,
+                    value,
+                    ? as sensor_type,
+                    CASE ? 
+                        WHEN 'BMP180_PRESSURE' THEN 'hPa'
+                        ELSE '°C'
+                    END as unit
+                FROM sensor_data 
+                WHERE device_id = ? 
+                    AND sensor_type = ?
+                    AND timestamp >= NOW() - $interval
+                ORDER BY timestamp ASC
+                LIMIT $points
+            ";
+            
+            $stmt = $this->db->prepare($query);
+            $stmt->execute([$sensor_type, $sensor_type, $device_id, $sensor_type]);
+            $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Debug-Logging
+            error_log("Temperature History Query for device $device_id, sensor $sensor_type, timespan $timespan");
+            error_log("Found " . count($data) . " data points");
+            
+            return $data;
+        } catch (Exception $e) {
+            error_log("Error in getTemperatureHistory: " . $e->getMessage());
+            return false;
+        }
     }
 }

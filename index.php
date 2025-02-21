@@ -12,14 +12,14 @@ if (!isset($_SESSION['user_id'])) {
 
 $db = Database::getInstance();
 $user = new User($db);
-$deviceManager = new Device($db);  // Umbenennung zu deviceManager für Klarheit
+$device = new Device($db);
 $current_user = $user->getById($_SESSION['user_id']);
 
 // Geräte des Benutzers laden
 if ($_SESSION['is_admin']) {
-    $devices = $deviceManager->getAll();
+    $devices = $device->getAll();
 } else {
-    $devices = $deviceManager->getByUser($_SESSION['user_id']);
+    $devices = $device->getByUser($_SESSION['user_id']);
 }
 
 include 'templates/header.php';
@@ -54,75 +54,33 @@ include 'templates/header.php';
                     <div class="card-body">
                         <p class="text-muted"><?= htmlspecialchars($device['description']) ?></p>
                         
-                        <?php
-                        $temps = $deviceManager->getTemperatures($device['id'], 4);  // Hole 4 Werte
-                        ?>
-                        
-                        <div id="device-data-<?= $device['id'] ?>">
-                            <?php if (!empty($temps)): ?>
-                                <div class="row g-2">
-                                    <?php foreach ($temps as $temp): ?>
-                                        <div class="col-3 text-center">
-                                            <div class="border rounded p-2">
-                                                <h5 class="mb-0"><?= number_format($temp['value'], 1) ?><?= $temp['unit'] ?></h5>
-                                                <p class="text-muted small mb-0"><?= htmlspecialchars($temp['display_name']) ?></p>
-                                            </div>
-                                        </div>
-                                    <?php endforeach; ?>
-                                </div>
-                            <?php else: ?>
-                                <p class="text-center text-muted">Keine Temperaturdaten</p>
-                            <?php endif; ?>
-                        </div>
-
-                        <script>
-                        function updateDeviceData<?= $device['id'] ?>() {
-                            fetch('api/get_device_data.php?device_id=<?= $device['id'] ?>')
-                                .then(response => response.json())
-                                .then(data => {
-                                    if (data.success && data.data.length > 0) {
-                                        let html = '<div class="row g-2">';
-                                        data.data.forEach(temp => {
-                                            html += `
-                                                <div class="col-3 text-center">
-                                                    <div class="border rounded p-2">
-                                                        <h5 class="mb-0">${parseFloat(temp.value).toFixed(1)}${temp.unit}</h5>
-                                                        <p class="text-muted small mb-0">${temp.display_name}</p>
-                                                    </div>
-                                                </div>
-                                            `;
-                                        });
-                                        html += '</div>';
-                                        document.getElementById('device-data-<?= $device['id'] ?>').innerHTML = html;
-                                    }
-                                })
-                                .catch(error => console.error('Error:', error));
-                        }
-
-                        // Aktualisiere alle 5 Sekunden
-                        setInterval(updateDeviceData<?= $device['id'] ?>, 5000);
-                        </script>
-                        
-                        <?php
-                        $relays = $deviceManager->getRelays($device['id']);
-                        if (!empty($relays)):
-                        ?>
-                            <hr>
-                            <h6>Relais</h6>
-                            <div class="d-flex flex-wrap gap-2">
-                                <?php foreach ($relays as $relay): ?>
-                                    <button class="btn btn-sm <?= $relay['state'] ? 'btn-success' : 'btn-secondary' ?>"
-                                            onclick="toggleRelay(<?= $device['id'] ?>, <?= $relay['id'] ?>)">
-                                        <?= htmlspecialchars($relay['name']) ?>
-                                    </button>
-                                <?php endforeach; ?>
+                        <!-- Temperaturtabelle -->
+                        <?php if (!empty($device['sensors'])): ?>
+                            <div class="table-responsive">
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th>Sensor</th>
+                                            <th>Wert</th>
+                                            <th>Zeit</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($device['sensors'] as $sensor): ?>
+                                            <tr>
+                                                <td><?= htmlspecialchars($sensor['display_name']) ?></td>
+                                                <td><?= number_format($sensor['value'], 1) ?><?= $sensor['unit'] ?></td>
+                                                <td><?= date('H:i', strtotime($sensor['timestamp'])) ?></td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
                             </div>
                         <?php endif; ?>
-                        
+
                         <div class="mt-3">
-                            <a href="device_detail.php?id=<?= $device['id'] ?>" 
-                               class="btn btn-primary btn-sm w-100">
-                                Details
+                            <a href="device_detail.php?id=<?= $device['id'] ?>" class="btn btn-primary btn-sm">
+                                Details anzeigen
                             </a>
                         </div>
                     </div>
@@ -131,32 +89,5 @@ include 'templates/header.php';
         <?php endforeach; ?>
     </div>
 </div>
-
-<script>
-function toggleRelay(deviceId, relayId) {
-    fetch('api/toggle_relay.php', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            device_id: deviceId,
-            relay_id: relayId
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            location.reload();
-        } else {
-            alert('Fehler beim Schalten des Relais');
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('Fehler beim Schalten des Relais');
-    });
-}
-</script>
 
 <?php include 'templates/footer.php'; ?>
