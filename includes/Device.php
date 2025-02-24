@@ -1,4 +1,4 @@
-<?php
+        <?php
 class Device {
     private $db;
     
@@ -80,100 +80,6 @@ class Device {
         return $stmt->fetch();
     }
     
-    public function create($name, $description, $user_id) {
-        try {
-            $this->db->beginTransaction();
-            
-            $mqtt_topic = 'device/' . uniqid();
-            
-            // Erstelle das Gerät
-            $stmt = $this->db->prepare("
-                INSERT INTO devices (name, description, user_id, mqtt_topic)
-                VALUES (?, ?, ?, ?)
-            ");
-            $stmt->execute([$name, $description, $user_id, $mqtt_topic]);
-            $device_id = $this->db->lastInsertId();
-            
-            // Erstelle 4 Standard-Relais
-            for ($i = 1; $i <= 4; $i++) {
-                $relayName = "Relais " . $i;
-                $stmt = $this->db->prepare("
-                    INSERT INTO relays (device_id, relay_number, name, state)
-                    VALUES (?, ?, ?, 0)
-                ");
-                $stmt->execute([$device_id, $i, $relayName]);
-                
-                // Füge Relais-Konfiguration hinzu
-                $stmt = $this->db->prepare("
-                    INSERT INTO relay_config (device_id, relay_number, display_name)
-                    VALUES (?, ?, ?)
-                ");
-                $stmt->execute([$device_id, $i, $relayName]);
-            }
-            
-            // Erstelle 4 Standard-Kontakte
-            for ($i = 1; $i <= 4; $i++) {
-                $contactName = "Kontakt " . $i;
-                $stmt = $this->db->prepare("
-                    INSERT INTO status_contacts (device_id, contact_number, name, state)
-                    VALUES (?, ?, ?, 0)
-                ");
-                $stmt->execute([$device_id, $i, $contactName]);
-                
-                // Füge Kontakt-Konfiguration hinzu
-                $stmt = $this->db->prepare("
-                    INSERT INTO contact_config (device_id, contact_number, display_name)
-                    VALUES (?, ?, ?)
-                ");
-                $stmt->execute([$device_id, $i, $contactName]);
-            }
-            
-            $this->db->commit();
-            return true;
-        } catch (Exception $e) {
-            $this->db->rollBack();
-            error_log("Fehler beim Erstellen des Geräts: " . $e->getMessage());
-            return false;
-        }
-    }
-    
-    public function updateDevice($id, $name, $description, $mqtt_topic) {
-        $stmt = $this->db->prepare("
-            UPDATE devices 
-            SET name = ?, description = ?, mqtt_topic = ?
-            WHERE id = ?
-        ");
-        return $stmt->execute([$name, $description, $mqtt_topic, $id]);
-    }
-    
-    public function delete($id) {
-        try {
-            $this->db->beginTransaction();
-            
-            // Lösche zugehörige Sensordaten
-            $stmt = $this->db->prepare("DELETE FROM sensor_data WHERE device_id = ?");
-            $stmt->execute([$id]);
-            
-            // Lösche zugehörige Relais
-            $stmt = $this->db->prepare("DELETE FROM relays WHERE device_id = ?");
-            $stmt->execute([$id]);
-            
-            // Lösche zugehörige Status-Kontakte
-            $stmt = $this->db->prepare("DELETE FROM status_contacts WHERE device_id = ?");
-            $stmt->execute([$id]);
-            
-            // Lösche das Gerät
-            $stmt = $this->db->prepare("DELETE FROM devices WHERE id = ?");
-            $result = $stmt->execute([$id]);
-            
-            $this->db->commit();
-            return $result;
-        } catch (Exception $e) {
-            $this->db->rollBack();
-            return false;
-        }
-    }
-    
     public function getTemperatures($device_id, $limit = 4) {
         $sensors = ['DS18B20_1', 'DS18B20_2', 'BMP180_TEMP', 'BMP180_PRESSURE'];
         $result = [];
@@ -199,7 +105,26 @@ class Device {
         $stmt->execute([$device_id]);
         return $stmt->fetchAll();
     }
-    
+
+    public function getStatusContacts($device_id) {
+        error_log("getStatusContacts aufgerufen für device_id: " . $device_id);
+        
+        $stmt = $this->db->prepare("
+            SELECT sc.*, COALESCE(cc.display_name, sc.name) as display_name
+            FROM status_contacts sc
+            LEFT JOIN contact_config cc ON sc.device_id = cc.device_id AND sc.contact_number = cc.contact_number
+            WHERE sc.device_id = ?
+            ORDER BY sc.contact_number
+        ");
+        $stmt->execute([$device_id]);
+        $contacts = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        error_log("Gefundene Kontakte:");
+        error_log(print_r($contacts, true));
+        
+        return $contacts;
+    }
+
     public function toggleRelay($relay_id, $state) {
         $stmt = $this->db->prepare("
             UPDATE relays
@@ -208,19 +133,7 @@ class Device {
         ");
         return $stmt->execute([$state, $relay_id]);
     }
-    
-    public function getStatusContacts($device_id) {
-        $stmt = $this->db->prepare("
-            SELECT sc.*, COALESCE(cc.display_name, CONCAT('Kontakt ', sc.contact_number)) as display_name
-            FROM status_contacts sc
-            LEFT JOIN contact_config cc ON sc.device_id = cc.device_id AND sc.contact_number = cc.contact_number
-            WHERE sc.device_id = ?
-            ORDER BY sc.contact_number
-        ");
-        $stmt->execute([$device_id]);
-        return $stmt->fetchAll();
-    }
-    
+
     public function updateStatusContact($contact_id, $state) {
         $stmt = $this->db->prepare("
             UPDATE status_contacts
@@ -229,11 +142,11 @@ class Device {
         ");
         return $stmt->execute([$state, $contact_id]);
     }
-    
+
     public function getSensorConfig($device_id) {
         $stmt = $this->db->prepare("
-            SELECT sensor_type, display_name 
-            FROM sensor_config 
+            SELECT sensor_type, display_name
+            FROM sensor_config
             WHERE device_id = ?
         ");
         $stmt->execute([$device_id]);
@@ -251,8 +164,8 @@ class Device {
 
     public function getRelayConfig($device_id) {
         $stmt = $this->db->prepare("
-            SELECT relay_number, display_name 
-            FROM relay_config 
+            SELECT relay_number, display_name
+            FROM relay_config
             WHERE device_id = ?
         ");
         $stmt->execute([$device_id]);
@@ -270,8 +183,8 @@ class Device {
 
     public function getContactConfig($device_id) {
         $stmt = $this->db->prepare("
-            SELECT contact_number, display_name 
-            FROM contact_config 
+            SELECT contact_number, display_name
+            FROM contact_config
             WHERE device_id = ?
         ");
         $stmt->execute([$device_id]);
@@ -298,43 +211,32 @@ class Device {
                 '30d' => 'INTERVAL 30 DAY',
                 default => 'INTERVAL 24 HOUR'
             };
-            
+
             // Bestimme die Anzahl der Datenpunkte
             $points = match($timespan) {
-                '1h' => 60,  // Ein Punkt pro Minute
-                '8h' => 96,  // Ein Punkt alle 5 Minuten
-                '24h' => 144, // Ein Punkt alle 10 Minuten
-                '7d' => 168,  // Ein Punkt pro Stunde
-                '30d' => 180, // Ein Punkt alle 4 Stunden
+                '1h' => 60,    // Ein Punkt pro Minute
+                '8h' => 96,    // Ein Punkt alle 5 Minuten
+                '24h' => 144,  // Ein Punkt alle 10 Minuten
+                '7d' => 168,   // Ein Punkt pro Stunde
+                '30d' => 180,  // Ein Punkt alle 4 Stunden
                 default => 144
             };
-            
+
             // SQL für die Abfrage der Temperaturdaten
             $query = "
-                SELECT 
-                    timestamp,
-                    value,
-                    ? as sensor_type,
-                    CASE ? 
-                        WHEN 'BMP180_PRESSURE' THEN 'hPa'
-                        ELSE '°C'
-                    END as unit
-                FROM sensor_data 
-                WHERE device_id = ? 
-                    AND sensor_type = ?
-                    AND timestamp >= NOW() - $interval
+                SELECT timestamp, value, ? as sensor_type,
+                       CASE ? WHEN 'BMP180_PRESSURE' THEN 'hPa' ELSE '°C' END as unit
+                FROM sensor_data
+                WHERE device_id = ?
+                  AND sensor_type = ?
+                  AND timestamp >= NOW() - $interval
                 ORDER BY timestamp ASC
                 LIMIT $points
             ";
-            
             $stmt = $this->db->prepare($query);
             $stmt->execute([$sensor_type, $sensor_type, $device_id, $sensor_type]);
             $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            
-            // Debug-Logging
-            error_log("Temperature History Query for device $device_id, sensor $sensor_type, timespan $timespan");
-            error_log("Found " . count($data) . " data points");
-            
+
             return $data;
         } catch (Exception $e) {
             error_log("Error in getTemperatureHistory: " . $e->getMessage());

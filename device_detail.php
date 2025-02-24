@@ -10,430 +10,400 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
-// Überprüfen, ob eine Device ID angegeben wurde
+// Überprüfen, ob eine Geräte-ID übergeben wurde
 if (!isset($_GET['id'])) {
     header('Location: index.php');
     exit;
 }
 
 $db = Database::getInstance();
-$device = new Device($db);
-$device_data = $device->getById($_GET['id']);
+$user = new User($db);
+$device_manager = new Device($db);
+$current_user = $user->getById($_SESSION['user_id']);
+
+// Gerätedaten laden
+$device_data = $device_manager->getById($_GET['id']);
 
 // Überprüfen, ob das Gerät existiert und dem Benutzer gehört
-if (!$device_data || 
-    (!$_SESSION['is_admin'] && $device_data['user_id'] !== $_SESSION['user_id'])) {
+if (!$device_data || (!$_SESSION['is_admin'] && $device_data['user_id'] !== $_SESSION['user_id'])) {
     header('Location: index.php');
     exit;
 }
 
-$temperatures = $device->getTemperatures($device_data['id']);
-$relays = $device->getRelays($device_data['id']);
-$status_contacts = $device->getStatusContacts($device_data['id']);
+// Sensordaten laden
+$sensors = $device_manager->getTemperatures($device_data['id']);
+
+// Relais laden
+$relays = $device_manager->getRelays($device_data['id']);
+
+// Status-Kontakte laden
+$status_contacts = $device_manager->getStatusContacts($device_data['id']);
 
 include 'templates/header.php';
 ?>
 
 <div class="container mt-4">
     <div class="row mb-4">
+        <div class="col">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="index.php">Dashboard</a></li>
+                    <li class="breadcrumb-item active" aria-current="page"><?= htmlspecialchars($device_data['name']) ?></li>
+                </ol>
+            </nav>
+        </div>
+    </div>
+
+    <div class="row mb-4">
         <div class="col-md-6">
-            <h1><?= htmlspecialchars($device_data['name']) ?></h1>
+            <div class="d-flex justify-content-between align-items-center">
+                <h1><?= htmlspecialchars($device_data['name']) ?></h1>
+                <?php if (strtotime($device_data['last_seen']) > strtotime('-5 minutes')): ?>
+                    <span class="badge bg-success">Online</span>
+                <?php else: ?>
+                    <span class="badge bg-danger">Offline</span>
+                <?php endif; ?>
+            </div>
             <p class="text-muted"><?= htmlspecialchars($device_data['description']) ?></p>
         </div>
         <div class="col-md-6 text-end">
+            <a href="device_config.php?id=<?= $device_data['id'] ?>" class="btn btn-primary me-2">
+                <i class="fas fa-cog"></i> Konfigurieren
+            </a>
             <a href="device_edit.php?id=<?= $device_data['id'] ?>" class="btn btn-primary">
                 <i class="fas fa-edit"></i> Bearbeiten
             </a>
         </div>
     </div>
 
-    <div class="row">
-        <div class="col-md-8">
-            <?php if (!empty($temperatures)): 
-                // Gruppiere Sensoren nach Einheit
-                $temperature_sensors = [];
-                $pressure_sensors = [];
-                
-                foreach ($temperatures as $sensor) {
-                    if ($sensor['unit'] === 'hPa') {
-                        $pressure_sensors[] = $sensor;
-                    } else {
-                        $temperature_sensors[] = $sensor;
-                    }
-                }
-                
-                if (!empty($temperature_sensors)): ?>
-                    <div class="card mb-4">
-                        <div class="card-header">
-                            <h5 class="mb-0">Aktuelle Temperaturen</h5>
-                        </div>
-                        <div class="card-body">
-                            <div class="row">
-                                <?php foreach ($temperature_sensors as $temp): ?>
-                                    <div class="col-md-3 mb-3">
-                                        <div class="border rounded p-3 text-center">
-                                            <h3 class="mb-0"><?= number_format($temp['value'], 1) ?><?= $temp['unit'] ?></h3>
-                                            <p class="text-muted mb-0"><?= htmlspecialchars($temp['display_name']) ?></p>
-                                        </div>
+    <!-- Sensordaten -->
+    <?php if (!empty($sensors)): 
+        // Gruppiere Sensoren nach Einheit
+        $temperature_sensors = [];
+        $pressure_sensors = [];
+        
+        foreach ($sensors as $sensor) {
+            if ($sensor['unit'] === 'hPa') {
+                $pressure_sensors[] = $sensor;
+            } else {
+                $temperature_sensors[] = $sensor;
+            }
+        }
+    ?>
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Sensoren</h5>
+            </div>
+            <div class="card-body">
+                <!-- Temperaturen -->
+                <?php if (!empty($temperature_sensors)): ?>
+                    <div class="row g-3 mb-4">
+                        <?php foreach ($temperature_sensors as $sensor): ?>
+                            <div class="col-md-4">
+                                <div class="border rounded p-3 text-center">
+                                    <div class="h3 mb-0"><?= number_format($sensor['value'], 1) ?><?= $sensor['unit'] ?></div>
+                                    <div class="text-muted"><?= htmlspecialchars($sensor['display_name']) ?></div>
+                                    <div class="small text-muted mt-2">
+                                        Aktualisiert: <?= date('d.m.Y H:i:s', strtotime($sensor['timestamp'])) ?>
                                     </div>
-                                <?php endforeach; ?>
+                                </div>
                             </div>
-                        </div>
+                        <?php endforeach; ?>
                     </div>
                 <?php endif; ?>
 
+                <!-- Luftdruck -->
                 <?php if (!empty($pressure_sensors)): ?>
-                    <div class="card mb-4">
-                        <div class="card-header">
-                            <h5 class="mb-0">Aktueller Luftdruck</h5>
-                        </div>
-                        <div class="card-body">
-                            <div class="row">
-                                <?php foreach ($pressure_sensors as $pressure): ?>
-                                    <div class="col-md-3 mb-3">
-                                        <div class="border rounded p-3 text-center">
-                                            <h3 class="mb-0"><?= number_format($pressure['value'], 1) ?><?= $pressure['unit'] ?></h3>
-                                            <p class="text-muted mb-0"><?= htmlspecialchars($pressure['display_name']) ?></p>
-                                        </div>
+                    <div class="row g-3">
+                        <?php foreach ($pressure_sensors as $sensor): ?>
+                            <div class="col-md-6">
+                                <div class="border rounded p-3 text-center">
+                                    <div class="h3 mb-0"><?= number_format($sensor['value'], 1) ?><?= $sensor['unit'] ?></div>
+                                    <div class="text-muted"><?= htmlspecialchars($sensor['display_name']) ?></div>
+                                    <div class="small text-muted mt-2">
+                                        Aktualisiert: <?= date('d.m.Y H:i:s', strtotime($sensor['timestamp'])) ?>
                                     </div>
-                                <?php endforeach; ?>
+                                </div>
                             </div>
-                        </div>
+                        <?php endforeach; ?>
                     </div>
                 <?php endif; ?>
-
-                <div class="card mb-4">
-                    <div class="card-header">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <h5 class="mb-0">Verlauf</h5>
-                            <select class="form-select form-select-sm w-auto" id="timespan-select">
-                                <option value="1h">Letzte Stunde</option>
-                                <option value="8h">8 Stunden</option>
-                                <option value="24h" selected>24 Stunden</option>
-                                <option value="7d">7 Tage</option>
-                                <option value="30d">30 Tage</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="card-body">
-                        <?php if (!empty($temperature_sensors)): ?>
-                            <div class="mb-4">
-                                <h6>Temperaturverlauf</h6>
-                                <canvas id="temperatureChart" height="300"></canvas>
-                            </div>
-                        <?php endif; ?>
-                        <?php if (!empty($pressure_sensors)): ?>
-                            <div>
-                                <h6>Luftdruckverlauf</h6>
-                                <canvas id="pressureChart" height="300"></canvas>
-                            </div>
-                        <?php endif; ?>
-                    </div>
-                </div>
-            <?php endif; ?>
-
-            <?php if (!empty($relays)): ?>
-                <div class="card mb-4">
-                    <div class="card-header">
-                        <h5 class="mb-0">Relais</h5>
-                    </div>
-                    <div class="card-body">
-                        <?php foreach ($relays as $relay): ?>
-                            <div class="d-flex justify-content-between align-items-center mb-2">
-                                <span><?= htmlspecialchars($relay['display_name']) ?></span>
-                                <button class="btn btn-sm <?= $relay['state'] ? 'btn-success' : 'btn-secondary' ?>"
-                                        onclick="toggleRelay(<?= $relay['id'] ?>, <?= !$relay['state'] ?>)"
-                                        data-relay-id="<?= $relay['id'] ?>">
-                                    <?= $relay['state'] ? 'An' : 'Aus' ?>
-                                </button>
-                            </div>
-                        <?php endforeach; ?>
-                    </div>
-                </div>
-            <?php endif; ?>
-
-            <?php if (!empty($status_contacts)): ?>
-                <div class="card">
-                    <div class="card-header">
-                        <h5 class="mb-0">Status-Kontakte</h5>
-                    </div>
-                    <div class="card-body">
-                        <?php foreach ($status_contacts as $contact): ?>
-                            <div class="d-flex justify-content-between align-items-center mb-2">
-                                <span><?= htmlspecialchars($contact['display_name']) ?></span>
-                                <span class="badge <?= $contact['state'] ? 'bg-success' : 'bg-danger' ?>">
-                                    <?= $contact['state'] ? 'Geschlossen' : 'Offen' ?>
-                                </span>
-                            </div>
-                        <?php endforeach; ?>
-                    </div>
-                </div>
-            <?php endif; ?>
+            </div>
         </div>
+    <?php endif; ?>
 
-        <div class="col-md-4">
-            <div class="card">
-                <div class="card-header">
-                    <h5 class="mb-0">Geräteinformationen</h5>
-                </div>
-                <div class="card-body">
-                    <p><strong>MQTT Topic:</strong><br><?= htmlspecialchars($device_data['mqtt_topic']) ?></p>
-                    <p><strong>Letzte Aktivität:</strong><br>
-                        <?php if (strtotime($device_data['last_seen']) > strtotime('-5 minutes')): ?>
-                            <span class="text-success">Online</span>
-                        <?php else: ?>
-                            <span class="text-danger">Offline</span>
-                            <br>
-                            <small class="text-muted">
-                                Zuletzt gesehen: <?= date('d.m.Y H:i:s', strtotime($device_data['last_seen'])) ?>
-                            </small>
-                        <?php endif; ?>
-                    </p>
+    <!-- Relais -->
+    <?php if (!empty($relays)): ?>
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Relais</h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <?php foreach ($relays as $relay): ?>
+                        <div class="col-md-3">
+                            <button class="btn btn-lg w-100 <?= $relay['state'] ? 'btn-success' : 'btn-secondary' ?>"
+                                    onclick="toggleRelay(<?= $device_data['id'] ?>, <?= $relay['id'] ?>, <?= $relay['state'] ? 0 : 1 ?>)"
+                                    data-relay-id="<?= $relay['id'] ?>">
+                                <?= htmlspecialchars($relay['display_name']) ?>
+                                <br>
+                                <small><?= $relay['state'] ? 'An' : 'Aus' ?></small>
+                            </button>
+                        </div>
+                    <?php endforeach; ?>
                 </div>
             </div>
         </div>
-    </div>
+    <?php endif; ?>
+
+    <!-- Status-Kontakte -->
+    <?php 
+    $status_contacts = $device_manager->getStatusContacts($device_data['id']);
+    error_log("Status Contacts für Device " . $device_data['id'] . ":");
+    error_log(print_r($status_contacts, true));
+    ?>
+    
+    <?php if (!empty($status_contacts)): ?>
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Status-Kontakte</h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <?php foreach ($status_contacts as $contact): ?>
+                        <div class="col-md-3">
+                            <div class="border rounded p-3 text-center" data-contact-id="<?= $contact['id'] ?>">
+                                <div class="mb-2"><?= htmlspecialchars($contact['display_name']) ?></div>
+                                <?php 
+                                    // state=1 bedeutet geschlossen (grün), state=0 bedeutet offen (rot)
+                                    $isOpen = $contact['state'] == 0;
+                                ?>
+                                <span class="badge <?= $isOpen ? 'bg-danger' : 'bg-success' ?>">
+                                    <?= $isOpen ? 'Offen' : 'Geschlossen' ?>
+                                </span>
+                                <div class="small text-muted mt-2">
+                                    Zuletzt geändert: <?= date('d.m.Y H:i:s', strtotime($contact['last_changed'])) ?>
+                                </div>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+        </div>
+    <?php endif; ?>
 </div>
 
-<script>
-let temperatureChart = null;
-let pressureChart = null;
+<?php include 'templates/footer.php'; ?>
 
-// Debug-Funktion
-function debugLog(message) {
-    console.log(message);
+<script>
+async function toggleRelay(deviceId, relayId, newState) {
+    try {
+        const response = await fetch('api/toggle_relay.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                device_id: deviceId,
+                relay_id: relayId,
+                state: newState
+            })
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            // Button Status aktualisieren
+            const button = document.querySelector(`button[data-relay-id="${relayId}"]`);
+            if (button) {
+                button.innerHTML = `${button.innerHTML.split('<br>')[0]}<br><small>${newState ? 'An' : 'Aus'}</small>`;
+                button.classList.remove(newState ? 'btn-secondary' : 'btn-success');
+                button.classList.add(newState ? 'btn-success' : 'btn-secondary');
+                button.onclick = () => toggleRelay(deviceId, relayId, newState ? 0 : 1);
+            }
+        } else {
+            showErrorDialog(data.message, data.details, {
+                deviceId,
+                relayId,
+                newState
+            });
+        }
+    } catch (error) {
+        console.error('Fehler:', error);
+        showErrorDialog('Technischer Fehler', null, {
+            error: error.message,
+            deviceId,
+            relayId,
+            newState
+        });
+    }
 }
 
-// Funktion zum Laden der Temperaturdaten
-async function loadTemperatureData(timespan) {
-    debugLog('Loading temperature data for timespan: ' + timespan);
-    const temperatureSensors = ['DS18B20_1', 'DS18B20_2', 'BMP180_TEMP'];
-    const pressureSensors = ['BMP180_PRESSURE'];
-    const colors = ['#FF6384', '#36A2EB', '#FFCE56'];
+function showErrorDialog(message, details, context) {
+    // Create error text
+    let errorText = "=== Fehler beim Schalten des Relais ===\n\n";
+    errorText += `Fehlermeldung: ${message}\n\n`;
     
+    // Add context
+    errorText += "=== Kontext ===\n";
+    for (const [key, value] of Object.entries(context)) {
+        errorText += `${key}: ${value}\n`;
+    }
+    
+    // Add details if available
+    if (details) {
+        errorText += "\n=== Details ===\n";
+        if (details.mqtt_log) {
+            errorText += "\nMQTT Log:\n" + details.mqtt_log + "\n";
+        }
+        for (const [key, value] of Object.entries(details)) {
+            if (key !== 'mqtt_log') {
+                errorText += `${key}: ${value}\n`;
+            }
+        }
+    }
+    
+    // Create dialog elements
+    const dialogContainer = document.createElement('div');
+    Object.assign(dialogContainer.style, {
+        position: 'fixed',
+        top: '50%',
+        left: '50%',
+        transform: 'translate(-50%, -50%)',
+        backgroundColor: 'white',
+        padding: '20px',
+        borderRadius: '5px',
+        boxShadow: '0 0 10px rgba(0,0,0,0.5)',
+        zIndex: '1000',
+        maxWidth: '80%',
+        maxHeight: '80%',
+        overflow: 'auto'
+    });
+    
+    // Add title
+    const title = document.createElement('h4');
+    title.textContent = 'Fehler beim Schalten des Relais';
+    title.style.marginBottom = '20px';
+    dialogContainer.appendChild(title);
+    
+    // Add textarea
+    const textarea = document.createElement('textarea');
+    Object.assign(textarea.style, {
+        width: '100%',
+        height: '300px',
+        padding: '10px',
+        marginBottom: '10px',
+        fontFamily: 'monospace'
+    });
+    textarea.value = errorText;
+    textarea.readOnly = true;
+    dialogContainer.appendChild(textarea);
+    
+    // Add buttons
+    const buttonContainer = document.createElement('div');
+    buttonContainer.style.textAlign = 'right';
+    
+    const copyButton = document.createElement('button');
+    copyButton.textContent = 'Kopieren';
+    copyButton.className = 'btn btn-secondary me-2';
+    copyButton.onclick = () => {
+        textarea.select();
+        document.execCommand('copy');
+        copyButton.textContent = 'Kopiert!';
+        setTimeout(() => copyButton.textContent = 'Kopieren', 2000);
+    };
+    buttonContainer.appendChild(copyButton);
+    
+    const closeButton = document.createElement('button');
+    closeButton.textContent = 'Schließen';
+    closeButton.className = 'btn btn-primary';
+    closeButton.onclick = () => document.body.removeChild(dialogContainer);
+    buttonContainer.appendChild(closeButton);
+    
+    dialogContainer.appendChild(buttonContainer);
+    
+    // Add overlay
+    const overlay = document.createElement('div');
+    Object.assign(overlay.style, {
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        zIndex: 999
+    });
+    overlay.onclick = () => {
+        document.body.removeChild(overlay);
+        document.body.removeChild(dialogContainer);
+    };
+    
+    // Show dialog
+    document.body.appendChild(overlay);
+    document.body.appendChild(dialogContainer);
+}
+
+// Automatische Aktualisierung der Status alle 2 Sekunden
+setInterval(async () => {
+    // Device ID aus der URL holen
+    const urlParams = new URLSearchParams(window.location.search);
+    const deviceId = urlParams.get('id');  
+    if (!deviceId) return;
+    
+    // Relais-Status aktualisieren
     try {
-        // Hole die aktuellen Sensordaten für die Anzeigenamen
-        const sensorInfo = <?= json_encode($temperatures) ?>;
-        debugLog('Sensor Info:', sensorInfo);
+        const relayResponse = await fetch(`api/get_relays.php?device_id=${deviceId}`);
+        const relayData = await relayResponse.json();
         
-        // Lade Temperaturdaten
-        const tempDatasets = await Promise.all(temperatureSensors.map(async (sensor, index) => {
-            const response = await fetch(`api/get_temperature_history.php?device_id=<?= $device_data['id'] ?>&sensor_type=${sensor}&timespan=${timespan}`);
-            const data = await response.json();
-            
-            if (!data.success) {
-                throw new Error(`Fehler beim Laden der Daten für ${sensor}: ${data.error}`);
-            }
-            
-            // Finde den passenden Sensor basierend auf dem Display-Namen
-            let displayName;
-            switch(sensor) {
-                case 'DS18B20_1':
-                    displayName = sensorInfo.find(s => s.display_name === 'DS1')?.display_name || 'DS1';
-                    break;
-                case 'DS18B20_2':
-                    displayName = sensorInfo.find(s => s.display_name === 'DS2')?.display_name || 'DS2';
-                    break;
-                case 'BMP180_TEMP':
-                    displayName = sensorInfo.find(s => s.display_name === 'BMP280')?.display_name || 'BMP280';
-                    break;
-                default:
-                    displayName = sensor;
-            }
-            
-            debugLog(`Sensor ${sensor} display name: ${displayName}`);
-            
-            return {
-                label: displayName,
-                data: data.data.map(point => ({
-                    x: new Date(point.timestamp),
-                    y: parseFloat(point.value)
-                })),
-                borderColor: colors[index],
-                tension: 0.4
-            };
-        }));
-
-        // Lade Luftdruckdaten
-        const pressureDatasets = await Promise.all(pressureSensors.map(async (sensor) => {
-            const response = await fetch(`api/get_temperature_history.php?device_id=<?= $device_data['id'] ?>&sensor_type=${sensor}&timespan=${timespan}`);
-            const data = await response.json();
-            
-            if (!data.success) {
-                throw new Error(`Fehler beim Laden der Daten für ${sensor}: ${data.error}`);
-            }
-            
-            // Finde den Luftdrucksensor
-            const displayName = sensorInfo.find(s => s.unit === 'hPa')?.display_name || 'Luftdruck';
-            
-            debugLog(`Sensor ${sensor} display name: ${displayName}`);
-            
-            return {
-                label: displayName,
-                data: data.data.map(point => ({
-                    x: new Date(point.timestamp),
-                    y: parseFloat(point.value)
-                })),
-                borderColor: '#4BC0C0',
-                tension: 0.4
-            };
-        }));
-
-        // Aktualisiere Temperaturdiagramm
-        if (document.getElementById('temperatureChart')) {
-            if (temperatureChart) {
-                temperatureChart.destroy();
-            }
-            const tempCtx = document.getElementById('temperatureChart').getContext('2d');
-            temperatureChart = new Chart(tempCtx, {
-                type: 'line',
-                data: { datasets: tempDatasets },
-                options: {
-                    responsive: true,
-                    interaction: {
-                        mode: 'index',
-                        intersect: false
-                    },
-                    scales: {
-                        x: {
-                            type: 'time',
-                            time: {
-                                unit: timespan.includes('d') ? 'day' : 'hour',
-                                displayFormats: {
-                                    hour: 'HH:mm',
-                                    day: 'DD.MM'
-                                }
-                            },
-                            title: {
-                                display: true,
-                                text: 'Zeit'
-                            }
-                        },
-                        y: {
-                            title: {
-                                display: true,
-                                text: 'Temperatur (°C)'
-                            }
-                        }
-                    },
-                    plugins: {
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    return context.dataset.label + ': ' + 
-                                           context.parsed.y.toFixed(1) + ' °C';
-                                }
-                            }
-                        }
-                    }
+        if (relayData.success) {
+            relayData.relays.forEach(relay => {
+                const button = document.querySelector(`button[data-relay-id="${relay.id}"]`);
+                if (button) {
+                    const displayName = button.innerHTML.split('<br>')[0];
+                    button.innerHTML = `${displayName}<br><small>${relay.state ? 'An' : 'Aus'}</small>`;
+                    button.classList.remove(relay.state ? 'btn-secondary' : 'btn-success');
+                    button.classList.add(relay.state ? 'btn-success' : 'btn-secondary');
+                    button.onclick = () => toggleRelay(deviceId, relay.id, relay.state ? 0 : 1);
                 }
             });
         }
-
-        // Aktualisiere Luftdruckdiagramm
-        if (document.getElementById('pressureChart')) {
-            if (pressureChart) {
-                pressureChart.destroy();
-            }
-            const pressureCtx = document.getElementById('pressureChart').getContext('2d');
-            pressureChart = new Chart(pressureCtx, {
-                type: 'line',
-                data: { datasets: pressureDatasets },
-                options: {
-                    responsive: true,
-                    interaction: {
-                        mode: 'index',
-                        intersect: false
-                    },
-                    scales: {
-                        x: {
-                            type: 'time',
-                            time: {
-                                unit: timespan.includes('d') ? 'day' : 'hour',
-                                displayFormats: {
-                                    hour: 'HH:mm',
-                                    day: 'DD.MM'
-                                }
-                            },
-                            title: {
-                                display: true,
-                                text: 'Zeit'
-                            }
-                        },
-                        y: {
-                            title: {
-                                display: true,
-                                text: 'Luftdruck (hPa)'
-                            }
-                        }
-                    },
-                    plugins: {
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    return context.dataset.label + ': ' + 
-                                           context.parsed.y.toFixed(1) + ' hPa';
-                                }
-                            }
-                        }
+    } catch (error) {
+        console.error('Fehler beim Aktualisieren der Relais:', error);
+    }
+    
+    // Kontakt-Status aktualisieren
+    try {
+        const contactResponse = await fetch(`api/get_contacts.php?device_id=${deviceId}`);
+        const contactData = await contactResponse.json();
+        console.log('Contact API Response:', contactData);
+        
+        if (contactData.success && contactData.contacts) {
+            contactData.contacts.forEach(contact => {
+                const container = document.querySelector(`div[data-contact-id="${contact.id}"]`);
+                console.log('Updating contact:', contact);
+                console.log('Found container:', container);
+                
+                if (container) {
+                    const badge = container.querySelector('.badge');
+                    if (badge) {
+                        // state=1 bedeutet geschlossen (grün), state=0 bedeutet offen (rot)
+                        const isOpen = contact.state == 0;
+                        console.log(`Contact ${contact.id} state: ${contact.state} -> isOpen: ${isOpen}`);
+                        
+                        badge.textContent = isOpen ? 'Offen' : 'Geschlossen';
+                        badge.classList.remove(isOpen ? 'bg-success' : 'bg-danger');
+                        badge.classList.add(isOpen ? 'bg-danger' : 'bg-success');
+                    }
+                    
+                    const timeElement = container.querySelector('.text-muted');
+                    if (timeElement) {
+                        const date = new Date(contact.last_changed);
+                        timeElement.textContent = `Zuletzt geändert: ${date.toLocaleString('de-DE')}`;
                     }
                 }
             });
         }
     } catch (error) {
-        console.error('Fehler beim Laden der Daten:', error);
-        debugLog('Error loading data: ' + error.message);
+        console.error('Fehler beim Aktualisieren der Kontakte:', error);
     }
-}
-
-// Event-Listener für Zeitspannenauswahl
-document.getElementById('timespan-select').addEventListener('change', function() {
-    loadTemperatureData(this.value);
-});
-
-// Funktion zum Umschalten der Relais
-function toggleRelay(relayId, newState) {
-    fetch('api/toggle_relay.php', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            relay_id: relayId,
-            state: newState ? 1 : 0
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            // Aktualisiere Button-Status
-            const button = document.querySelector(`button[data-relay-id="${relayId}"]`);
-            if (button) {
-                button.classList.remove(newState ? 'btn-secondary' : 'btn-success');
-                button.classList.add(newState ? 'btn-success' : 'btn-secondary');
-                button.textContent = newState ? 'An' : 'Aus';
-                button.onclick = () => toggleRelay(relayId, !newState);
-            }
-        } else {
-            alert('Fehler beim Schalten des Relais');
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('Fehler beim Schalten des Relais');
-    });
-}
-
-// Debug: Log initial state
-debugLog('Script loaded, initializing...');
-
-// Initialisiere Chart mit 24h Zeitspanne
-loadTemperatureData('24h');
-
-// Aktualisiere die Seite alle 5 Minuten
-setInterval(() => {
-    loadTemperatureData(document.getElementById('timespan-select').value);
-}, 300000);
+}, 2000);
 </script>
-
-<?php include 'templates/footer.php'; ?>
