@@ -1,79 +1,83 @@
 # IoT Gateway
 
-Ein PHP-basiertes Gateway für IoT-Geräte mit MQTT-Integration.
+Ein PHP-basiertes Gateway für IoT-Geräte mit MQTT-Integration, speziell entwickelt für ESP32-Mikrocontroller.
 
-## Funktionen
+## Features
 
-- Benutzer-Verwaltung mit Login-System
-- Mehrere ESP32-Clients pro Benutzer
-- Temperatur-Aufzeichnung und Visualisierung
-- Relais-Steuerung
-- Status-Kontakt-Überwachung
-- Mobile App-Unterstützung via API
-- MQTT-Integration
-
-## Schnellstart
-
-```bash
-# Repository klonen
-cd /var/www/html
-sudo git clone https://github.com/MarcEmmert/DB-Gateway.git iotgateway
-
-# Konfiguration erstellen
-cd iotgateway
-sudo cp config.example.php config.php
-sudo nano config.php
-
-# Berechtigungen setzen
-sudo chown -R www-data:www-data .
-```
-
-Detaillierte Installationsanweisungen finden Sie in der [INSTALL.md](INSTALL.md).
-
-## Projektstruktur
-
-/var/www/html/iotgateway/
-├── api/                    # API-Endpunkte für Mobile App
-├── assets/                 # CSS, JavaScript, Bilder
-├── database/              # Datenbank-Schema und Migrations
-├── includes/              # PHP-Klassen und Funktionen
-├── logs/                  # Log-Dateien
-├── templates/             # HTML-Templates
-└── vendor/                # Composer-Abhängigkeiten
-
-## ESP32-Integration
-
-Die ESP32-Firmware und Einrichtungsanleitung finden Sie in der [ESP32.md](ESP32.md).
+- Echtzeit-Überwachung von ESP32-Geräten
+- MQTT-Kommunikation für Live-Updates
+- Sensor-Datenerfassung (DS18B20, BMP180)
+- Relais-Steuerung (4 Kanäle)
+- Status-Kontakte Überwachung (4 Kanäle)
+- Benutzer-Management mit Admin-Interface
+- Responsive Web-Interface mit Bootstrap
 
 ## Systemanforderungen
 
-- Ubuntu Server 24.04 LTS
-- PHP 8.3 oder höher
-- MariaDB 10.6 oder höher
-- Apache2
-- Mosquitto MQTT Broker
+- PHP 7.4 oder höher
+- MariaDB/MySQL Datenbank
+- MQTT Broker (z.B. Mosquitto)
+- Webserver (Apache/Nginx)
 
-## Entwicklung
+## Installation
 
 1. Repository klonen:
 ```bash
-git clone https://github.com/MarcEmmert/DB-Gateway.git
-cd DB-Gateway
+git clone https://github.com/yourusername/DB-Gateway.git
 ```
 
-2. Entwicklungsumgebung einrichten:
+2. Konfigurationsdatei erstellen:
 ```bash
 cp config.example.php config.php
-# config.php anpassen
 ```
 
-## Updates
+3. Konfiguration in `config.php` anpassen:
+- Datenbank-Zugangsdaten
+- MQTT-Broker-Einstellungen
+- Weitere Systemeinstellungen
 
+4. Datenbank-Struktur importieren:
+```sql
+mysql -u username -p database_name < database.sql
+```
+
+5. MQTT-Handler als Service einrichten:
 ```bash
-cd /var/www/html/iotgateway
-sudo git pull
-sudo chown -R www-data:www-data .
+nohup /usr/bin/php /path/to/mqtt_listener.php > /dev/null 2>&1 &
 ```
+
+## ESP32 Konfiguration
+
+### Pin-Belegung
+
+- **Relais**:
+  - Relais 1: GPIO26
+  - Relais 2: GPIO27
+  - Relais 3: GPIO2
+  - Relais 4: GPIO12
+
+- **Kontakte** (INPUT_PULLUP):
+  - Kontakt 1: GPIO34
+  - Kontakt 2: GPIO35
+  - Kontakt 3: GPIO36
+  - Kontakt 4: GPIO39
+
+- **Sensoren**:
+  - DS18B20: Standard OneWire Bus
+  - BMP180: I2C (SDA/SCL)
+
+### MQTT-Topics
+
+- Status: `device/{device_id}/status`
+- Temperatur: `device/{device_id}/temperature`
+- Relais: `device/{device_id}/relay`
+
+## API-Endpunkte
+
+- `/api/get_sensor_data.php`: Aktuelle Sensordaten
+- `/api/get_contacts.php`: Status der Kontakte
+- `/api/get_relays.php`: Status der Relais
+- `/api/toggle_relay.php`: Relais schalten
 
 ## Lizenz
 

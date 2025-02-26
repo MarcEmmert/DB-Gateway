@@ -35,37 +35,6 @@ function createTemperatureChart(canvasId, data) {
     });
 }
 
-// Relais-Status umschalten
-function toggleRelay(deviceId, relayId) {
-    const button = event.target;
-    const currentState = button.classList.contains('btn-success');
-    
-    fetch('/api/toggle_relay.php', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            device_id: deviceId,
-            relay_id: relayId,
-            state: !currentState
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            button.classList.toggle('btn-success');
-            button.classList.toggle('btn-secondary');
-        } else {
-            alert('Fehler beim Schalten des Relais');
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('Fehler beim Schalten des Relais');
-    });
-}
-
 // Automatische Aktualisierung der Daten
 function updateDeviceData() {
     const deviceCards = document.querySelectorAll('[data-device-id]');

@@ -1,0 +1,80 @@
+<?php
+session_start();
+
+if (isset($_SESSION['user_id'])) {
+    header('Location: index.php');
+    exit;
+}
+
+require_once 'includes/Database.php';
+require_once 'includes/User.php';
+
+
+$db = Database::getInstance();
+$user = new User($db);
+
+$error = '';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $username = $_POST['username'] ?? '';
+    $password = $_POST['password'] ?? '';
+    
+    if (empty($username) || empty($password)) {
+        $error = 'Bitte geben Sie Benutzername und Passwort ein.';
+    } else {
+        $user_data = $user->authenticate($username, $password);
+        
+        if ($user_data) {
+            $_SESSION['user_id'] = $user_data['id'];
+            $_SESSION['username'] = $user_data['username'];
+            $_SESSION['is_admin'] = $user_data['is_admin'];
+            
+            header('Location: index.php');
+            exit;
+        } else {
+            $error = 'Ungültiger Benutzername oder Passwort';
+        }
+    }
+}
+
+include 'templates/header.php';
+?>
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="mb-0">Login</h3>
+                </div>
+                <div class="card-body">
+                    <?php if ($error): ?>
+                        <div class="alert alert-danger">
+                            <?= htmlspecialchars($error) ?>
+                        </div>
+                    <?php endif; ?>
+                    
+                    <form method="post">
+                        <div class="mb-3">
+                            <label for="username" class="form-label">Benutzername</label>
+                            <input type="text" class="form-control" id="username" 
+                                   name="username" required autofocus>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="password" class="form-label">Passwort</label>
+                            <input type="password" class="form-control" id="password" 
+                                   name="password" required>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-primary w-100">
+                            Anmelden
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<?php include 'templates/footer.php'; ?>

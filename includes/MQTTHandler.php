@@ -110,13 +110,17 @@ class MQTTHandler {
             // Status Update (device/DEVICE_ID/status)
             if (count($parts) >= 3 && $parts[2] === 'status' && isset($data['data'])) {
                 $this->handleStatusMessage($parts, $message);
-                
-                // Update device last_seen
-                $stmt = $this->db->getConnection()->prepare(
-                    "UPDATE devices SET last_seen = CURRENT_TIMESTAMP WHERE mqtt_topic LIKE ?"
-                );
-                $stmt->execute(['%' . $device_id . '%']);
             }
+            // Temperature Update (device/DEVICE_ID/temperature)
+            else if (count($parts) >= 3 && $parts[2] === 'temperature') {
+                $this->handleTemperatureMessage($parts, $message);
+            }
+            
+            // Update device last_seen
+            $stmt = $this->db->getConnection()->prepare(
+                "UPDATE devices SET last_seen = CURRENT_TIMESTAMP WHERE mqtt_topic LIKE ?"
+            );
+            $stmt->execute(['%' . $device_id . '%']);
             
             return true;
         } catch (Exception $e) {
@@ -194,6 +198,79 @@ class MQTTHandler {
             }
         } catch (Exception $e) {
             $this->log("Error handling status message: " . $e->getMessage());
+            $this->log("Stack trace: " . $e->getTraceAsString());
+        }
+    }
+    
+    private function handleTemperatureMessage($topic_parts, $payload) {
+        try {
+            $this->log("\n=== Handling Temperature Message ===");
+            $this->log("Topic: " . implode('/', $topic_parts));
+            $this->log("Payload: " . $payload);
+            
+            // Get device ID from topic
+            $device_mqtt_id = $topic_parts[1];
+            $this->log("Device MQTT ID: " . $device_mqtt_id);
+            
+            // Get device ID from database
+            $stmt = $this->db->getConnection()->prepare("
+                SELECT id FROM devices 
+                WHERE mqtt_topic LIKE ?
+            ");
+            $stmt->execute(["%$device_mqtt_id%"]);
+            $device = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$device) {
+                $this->log("Error: Device not found for MQTT ID: " . $device_mqtt_id);
+                return;
+            }
+            
+            $device_id = $device['id'];
+            $this->log("Found device ID: " . $device_id);
+            
+            // Parse JSON payload
+            $data = json_decode($payload, true);
+            if (!$data) {
+                $this->log("Error: Invalid JSON payload");
+                $this->log("Raw payload: " . $payload);
+                return;
+            }
+            
+            // Prepare insert statement
+            $stmt = $this->db->getConnection()->prepare("
+                INSERT INTO sensor_data 
+                (device_id, sensor_type, value, timestamp) 
+                VALUES (?, ?, ?, NOW())
+            ");
+            
+            // Insert BMP180 temperature
+            if (isset($data['bmp_temp'])) {
+                $stmt->execute([$device_id, 'BMP180_TEMP', $data['bmp_temp']]);
+                $this->log("Stored BMP180 temperature: " . $data['bmp_temp']);
+            }
+            
+            // Insert Dallas1 temperature
+            if (isset($data['dallas1_temp'])) {
+                $stmt->execute([$device_id, 'DS18B20_1', $data['dallas1_temp']]);
+                $this->log("Stored Dallas1 temperature: " . $data['dallas1_temp']);
+            }
+            
+            // Insert Dallas2 temperature
+            if (isset($data['dallas2_temp'])) {
+                $stmt->execute([$device_id, 'DS18B20_2', $data['dallas2_temp']]);
+                $this->log("Stored Dallas2 temperature: " . $data['dallas2_temp']);
+            }
+            
+            // Insert BMP180 pressure
+            if (isset($data['pressure'])) {
+                $stmt->execute([$device_id, 'BMP180_PRESSURE', $data['pressure']]);
+                $this->log("Stored BMP180 pressure: " . $data['pressure']);
+            }
+            
+            $this->log("Successfully stored all sensor data");
+            
+        } catch (Exception $e) {
+            $this->log("Error handling temperature message: " . $e->getMessage());
             $this->log("Stack trace: " . $e->getTraceAsString());
         }
     }

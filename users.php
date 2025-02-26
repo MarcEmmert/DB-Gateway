@@ -55,16 +55,18 @@ include 'templates/header.php';
                                 </td>
                                 <td><?= date('d.m.Y H:i', strtotime($u['created_at'])) ?></td>
                                 <td>
-                                    <button type="button" class="btn btn-sm btn-primary"
-                                            onclick="editUser(<?= htmlspecialchars(json_encode($u)) ?>)">
-                                        <i class="fas fa-edit"></i>
-                                    </button>
-                                    <?php if ($u['id'] !== $_SESSION['user_id']): ?>
-                                        <button type="button" class="btn btn-sm btn-danger"
-                                                onclick="deleteUser(<?= $u['id'] ?>)">
-                                            <i class="fas fa-trash"></i>
-                                        </button>
-                                    <?php endif; ?>
+                                    <div class="btn-group">
+                                        <a href="user_edit.php?id=<?= $u['id'] ?>" 
+                                           class="btn btn-sm btn-primary">
+                                            <i class="fas fa-edit"></i>
+                                        </a>
+                                        <?php if ($u['id'] !== $_SESSION['user_id']): ?>
+                                            <button type="button" class="btn btn-sm btn-danger"
+                                                    onclick="deleteUser(<?= $u['id'] ?>)">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        <?php endif; ?>
+                                    </div>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -172,6 +174,10 @@ include 'templates/header.php';
 </div>
 
 <script>
+// Base URL für API-Aufrufe - verwende die aktuelle URL als Basis
+const baseUrl = window.location.origin;
+console.log('Base URL:', baseUrl); // Debug-Ausgabe
+
 function saveUser() {
     const formData = new FormData(document.getElementById('addUserForm'));
     const data = {
@@ -181,25 +187,33 @@ function saveUser() {
         is_admin: formData.get('is_admin') === 'on'
     };
     
-    fetch('/api/save_user.php', {
+    console.log('Sending data:', data); // Debug-Ausgabe
+    
+    fetch(baseUrl + '/api/save_user.php', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
         },
         body: JSON.stringify(data)
     })
-    .then(response => response.json())
+    .then(response => {
+        console.log('Response status:', response.status); // Debug-Ausgabe
+        return response.json();
+    })
     .then(data => {
+        console.log('Response data:', data); // Debug-Ausgabe
         if (data.success) {
             location.reload();
         } else {
-            alert(data.error || 'Fehler beim Speichern des Benutzers');
+            alert(data.message || 'Fehler beim Speichern des Benutzers');
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Fehler beim Speichern des Benutzers');
+        alert('Fehler beim Speichern des Benutzers: ' + error.message);
     });
+    
+    return false; // Prevent form submission
 }
 
 function editUser(user) {
@@ -221,43 +235,55 @@ function updateUser() {
         is_admin: formData.get('is_admin') === 'on'
     };
     
-    fetch('/api/update_user.php', {
+    console.log('Updating user with data:', data); // Debug-Ausgabe
+    
+    fetch(baseUrl + '/api/save_user.php', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
         },
         body: JSON.stringify(data)
     })
-    .then(response => response.json())
+    .then(response => {
+        console.log('Response status:', response.status); // Debug-Ausgabe
+        return response.json();
+    })
     .then(data => {
+        console.log('Response data:', data); // Debug-Ausgabe
         if (data.success) {
             location.reload();
         } else {
-            alert(data.error || 'Fehler beim Aktualisieren des Benutzers');
+            alert(data.message || 'Fehler beim Aktualisieren des Benutzers');
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Fehler beim Aktualisieren des Benutzers');
+        alert('Fehler beim Aktualisieren des Benutzers: ' + error.message);
     });
+    
+    return false; // Prevent form submission
 }
 
 function deleteUser(id) {
     if (confirm('Möchten Sie diesen Benutzer wirklich löschen?')) {
-        fetch(`/api/delete_user.php?id=${id}`, {
-            method: 'DELETE'
+        fetch(baseUrl + `/api/delete_user.php?id=${id}`, {
+            method: 'GET'
         })
-        .then(response => response.json())
+        .then(response => {
+            console.log('Response status:', response.status); // Debug-Ausgabe
+            return response.json();
+        })
         .then(data => {
+            console.log('Response data:', data); // Debug-Ausgabe
             if (data.success) {
                 location.reload();
             } else {
-                alert(data.error || 'Fehler beim Löschen des Benutzers');
+                alert(data.message || 'Fehler beim Löschen des Benutzers');
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('Fehler beim Löschen des Benutzers');
+            alert('Fehler beim Löschen des Benutzers: ' + error.message);
         });
     }
 }

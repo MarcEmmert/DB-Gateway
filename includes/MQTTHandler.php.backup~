@@ -1,0 +1,86 @@
+<?php
+class MQTTHandler {
+    private $mqtt;
+    private $db;
+    private $device;
+    
+    public function __construct($database) {
+        global $config;
+        $this->db = $database->getConnection();
+        $this->device = new Device($database);
+        
+        try {
+            $this->mqtt = new Mosquitto\Client();
+            
+            // Wenn MQTT-Konfiguration vorhanden ist
+            if (isset($config['mqtt'])) {
+                if (isset($config['mqtt']['user'], $config['mqtt']['password'])) {
+                    $this->mqtt->setCredentials($config['mqtt']['user'], $config['mqtt']['password']);
+                }
+                $this->mqtt->connect(
+                    $config['mqtt']['host'] ?? 'localhost',
+                    $config['mqtt']['port'] ?? 1883,
+                    60
+                );
+            } else {
+                // Standard-MQTT-Konfiguration
+                $this->mqtt->connect('localhost', 1883, 60);
+            }
+        } catch (Exception $e) {
+            error_log("MQTT Verbindungsfehler: " . $e->getMessage());
+            throw new Exception("MQTT Verbindung fehlgeschlagen: " . $e->getMessage());
+        }
+    }
+    
+    public function subscribe($device_id) {
+        $device = $this->device->getById($device_id);
+        if ($device) {
+            $this->mqtt->subscribe($device['mqtt_topic'] . '/#', 0);
+        }
+    }
+    
+    public function publish($topic, $message) {
+        try {
+            return $this->mqtt->publish($topic, json_encode($message), 0, false);
+        } catch (Exception $e) {
+            error_log("MQTT Publish Fehler: " . $e->getMessage());
+            throw new Exception("MQTT Nachricht konnte nicht gesendet werden: " . $e->getMessage());
+        }
+    }
+    
+    public function handleMessage($message) {
+        $topic_parts = explode('/', $message->topic);
+        $device_id = $topic_parts[1];
+        $type = $topic_parts[2];
+        
+        $data = json_decode($message->payload, true);
+        
+        switch ($type) {
+            case 'temperature':
+                $this->device->addTemperature($device_id, $data['temperature']);
+                break;
+                
+            case 'status':
+                foreach ($data as $contact_id => $state) {
+                    $this->device->updateStatusContact($contact_id, $state);
+                }
+                break;
+        }
+    }
+    
+    public function toggleRelay($device_id, $relay_id, $state) {
+        try {
+            $device = $this->device->getById($device_id);
+            if ($device) {
+                $topic = $device['mqtt_topic'] . '/relay/' . $relay_id;
+                $message = ['state' => $state];
+                $this->publish($topic, $message);
+                return true;
+            }
+            throw new Exception("Gerät nicht gefunden");
+        } catch (Exception $e) {
+            error_log("Relay Toggle Fehler: " . $e->getMessage());
+            throw new Exception("Relay konnte nicht geschaltet werden: " . $e->getMessage());
+        }
+    }
+}

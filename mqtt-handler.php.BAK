@@ -1,0 +1,123 @@
+<?php
+require_once __DIR__ . '/includes/Database.php';
+require_once __DIR__ . '/includes/Device.php';
+require_once __DIR__ . '/includes/SensorData.php';
+
+class MQTTHandler {
+    private $db;
+    private $process;
+    private $pipes;
+    
+    public function __construct() {
+        $this->db = Database::getInstance();
+        $config = require __DIR__ . '/config.php';
+        
+        if (!isset($config['mqtt'])) {
+            throw new Exception("MQTT configuration not found");
+        }
+        
+        $this->startMQTTClient($config['mqtt']);
+    }
+    
+    private function startMQTTClient($mqttConfig) {
+        $descriptorspec = array(
+            0 => array("pipe", "r"),  // stdin
+            1 => array("pipe", "w"),  // stdout
+            2 => array("pipe", "w")   // stderr
+        );
+        
+        // Baue den Befehl
+        $cmd = "mosquitto_sub -h " . escapeshellarg($mqttConfig['host']);
+        $cmd .= " -p " . intval($mqttConfig['port']);
+        if (!empty($mqttConfig['user'])) {
+            $cmd .= " -u " . escapeshellarg($mqttConfig['user']);
+            $cmd .= " -P " . escapeshellarg($mqttConfig['password']);
+        }
+        $cmd .= " -t 'device/#' -v";  // -v gibt Topic und Nachricht aus
+        
+        $this->process = proc_open($cmd, $descriptorspec, $this->pipes);
+        
+        if (!is_resource($this->process)) {
+            throw new Exception("Failed to start MQTT client");
+        }
+        
+        // Nicht-blockierend machen
+        stream_set_blocking($this->pipes[1], 0);
+        stream_set_blocking($this->pipes[2], 0);
+    }
+    
+    public function handleMessage($topic, $payload) {
+        error_log("Processing MQTT message - Topic: {$topic}, Payload: {$payload}");
+        
+        $parts = explode('/', $topic);
+        if (count($parts) !== 3) {
+            error_log("Invalid topic format: {$topic}");
+            return;
+        }
+        
+        $device_id = $parts[1];
+        $sensor_type = $parts[2];
+        
+        try {
+            // Überprüfe die Datenbankverbindung
+            if (!$this->db->isConnected()) {
+                error_log("Database connection lost - attempting to reconnect");
+                $this->db = Database::getInstance(true);
+            }
+            
+            $stmt = $this->db->getConnection()->prepare(
+                "INSERT INTO sensor_data (device_id, sensor_type, value, timestamp) VALUES (?, ?, ?, NOW())"
+            );
+            
+            if ($stmt->execute([$device_id, $sensor_type, $payload])) {
+                error_log("Successfully inserted data - Device: {$device_id}, Sensor: {$sensor_type}");
+            } else {
+                error_log("Failed to insert data - Device: {$device_id}, Sensor: {$sensor_type}");
+                error_log("SQL Error: " . implode(", ", $stmt->errorInfo()));
+            }
+        } catch (PDOException $e) {
+            error_log("Database error in handleMessage: " . $e->getMessage());
+            error_log("Stack trace: " . $e->getTraceAsString());
+        } catch (Exception $e) {
+            error_log("General error in handleMessage: " . $e->getMessage());
+            error_log("Stack trace: " . $e->getTraceAsString());
+        }
+    }
+    
+    public function processMessages() {
+        while (true) {
+            $line = fgets($this->pipes[1]);
+            if ($line !== false) {
+                // mosquitto_sub -v gibt Ausgabe im Format "topic payload" aus
+                $parts = explode(" ", $line, 2);
+                if (count($parts) === 2) {
+                    $topic = trim($parts[0]);
+                    $payload = trim($parts[1]);
+                    $this->handleMessage($topic, $payload);
+                }
+            }
+            
+            // Prüfe auf Fehler
+            $error = fgets($this->pipes[2]);
+            if ($error !== false) {
+                error_log("MQTT Error: " . trim($error));
+            }
+            
+            // Kleine Pause um CPU-Last zu reduzieren
+            usleep(100000); // 100ms
+        }
+    }
+    
+    public function __destruct() {
+        if (is_resource($this->process)) {
+            proc_terminate($this->process);
+            proc_close($this->process);
+        }
+    }
+}
+
+// MQTT Handler starten
+$handler = new MQTTHandler();
+
+// Nachrichten verarbeiten
+$handler->processMessages();

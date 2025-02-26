@@ -4,6 +4,9 @@ session_start();
 
 require_once __DIR__ . '/../includes/Database.php';
 require_once __DIR__ . '/../includes/Device.php';
+require_once __DIR__ . '/../includes/SensorData.php';
+require_once __DIR__ . '/../includes/Relay.php';
+require_once __DIR__ . '/../includes/StatusContact.php';
 
 // Überprüfen, ob der Benutzer eingeloggt ist
 if (!isset($_SESSION['user_id'])) {
@@ -30,25 +33,39 @@ if (!$device_data ||
     exit;
 }
 
-// Temperaturdaten laden
-$temperatures = $device->getTemperatures($device_data['id'], 1);
-$latest_temp = $temperatures[0] ?? null;
+// Sensordaten laden
+$sensorData = new SensorData();
+$latest_readings = $sensorData->getLatestReadings($device_data['id']);
 
 // Relais-Status laden
-$relays = $device->getRelays($device_data['id']);
+$relay = new Relay();
+$relays = $relay->getByDevice($device_data['id']);
 
 // Status-Kontakte laden
-$status_contacts = $device->getStatusContacts($device_data['id']);
+$statusContact = new StatusContact();
+$status_contacts = $statusContact->getByDevice($device_data['id']);
 
 // Antwort zusammenstellen
 $response = [
     'id' => $device_data['id'],
     'name' => $device_data['name'],
     'last_seen' => $device_data['last_seen'],
-    'temperature' => $latest_temp ? floatval($latest_temp['value']) : null,
-    'temperature_timestamp' => $latest_temp ? $latest_temp['timestamp'] : null,
+    'sensors' => [
+        'DS18B20_1' => null,
+        'DS18B20_2' => null,
+        'BMP180_TEMP' => null,
+        'BMP180_PRESSURE' => null
+    ],
     'relays' => $relays,
     'status_contacts' => $status_contacts
 ];
+
+// Sensordaten einfügen
+foreach ($latest_readings as $reading) {
+    $response['sensors'][$reading['sensor_type']] = [
+        'value' => floatval($reading['value']),
+        'timestamp' => $reading['timestamp']
+    ];
+}
 
 echo json_encode($response);

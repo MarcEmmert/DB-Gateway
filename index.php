@@ -124,16 +124,25 @@ include 'templates/header.php';
                         <!-- Kontakte -->
                         <?php 
                         $contacts = $device_manager->getStatusContacts($device['id']);
+                        $contact_config = $device_manager->getContactConfig($device['id']);
                         if (!empty($contacts)): ?>
                             <div class="mb-3">
                                 <h6 class="border-bottom pb-2 mb-2">Status-Kontakte</h6>
                                 <div class="row g-2">
-                                    <?php foreach ($contacts as $contact): ?>
+                                    <?php foreach ($contacts as $contact): 
+                                        $config = $contact_config[$contact['contact_number']] ?? [];
+                                        $isOpen = $contact['state'] == 0;
+                                        $colorOpen = $config['color_open'] ?? '#dc3545';
+                                        $colorClosed = $config['color_closed'] ?? '#28a745';
+                                    ?>
                                         <div class="col-6">
                                             <div class="border rounded p-2 text-center" data-contact-id="<?= $contact['id'] ?>">
-                                                <div class="small mb-1"><?= htmlspecialchars($contact['name']) ?></div>
-                                                <span class="badge <?= $contact['state'] ? 'bg-success' : 'bg-danger' ?>">
-                                                    <?= $contact['state'] ? 'Geschlossen' : 'Offen' ?>
+                                                <div class="small mb-1"><?= htmlspecialchars($contact['display_name'] ?? 'Kontakt ' . $contact['contact_number']) ?></div>
+                                                <span class="badge" 
+                                                      style="background-color: <?= $isOpen ? $colorOpen : $colorClosed ?>"
+                                                      data-color-open="<?= $colorOpen ?>"
+                                                      data-color-closed="<?= $colorClosed ?>">
+                                                    <?= $isOpen ? 'Offen' : 'Geschlossen' ?>
                                                 </span>
                                             </div>
                                         </div>
@@ -157,9 +166,13 @@ include 'templates/header.php';
 <?php include 'templates/footer.php'; ?>
 
 <script>
+// Base URL für API-Aufrufe
+const baseUrl = window.location.origin;
+console.log('Base URL:', baseUrl); // Debug-Ausgabe
+
 async function toggleRelay(deviceId, relayId, newState) {
     try {
-        const response = await fetch('api/toggle_relay.php', {
+        const response = await fetch(baseUrl + '/api/toggle_relay.php', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -194,6 +207,31 @@ async function toggleRelay(deviceId, relayId, newState) {
     }
 }
 
+// Funktion zum Aktualisieren der Kontakte
+function updateContacts(deviceId) {
+    fetch(`api/get_contacts.php?device_id=${deviceId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.contacts) {
+                data.contacts.forEach(contact => {
+                    const contactDiv = document.querySelector(`[data-contact-id="${contact.id}"]`);
+                    if (contactDiv) {
+                        const badge = contactDiv.querySelector('.badge');
+                        if (badge) {
+                            // Hole die gespeicherten Farben aus data-Attributen
+                            const colorOpen = badge.getAttribute('data-color-open') || '#dc3545';
+                            const colorClosed = badge.getAttribute('data-color-closed') || '#28a745';
+                            
+                            const isOpen = contact.state == 0;
+                            badge.style.backgroundColor = isOpen ? colorOpen : colorClosed;
+                            badge.textContent = isOpen ? 'Offen' : 'Geschlossen';
+                        }
+                    }
+                });
+            }
+        });
+}
+
 // Automatische Aktualisierung der Status alle 5 Sekunden
 setInterval(async () => {
     const deviceCards = document.querySelectorAll('.card');
@@ -204,7 +242,7 @@ setInterval(async () => {
         
         // Relais-Status aktualisieren
         try {
-            const relayResponse = await fetch(`api/get_relays.php?device_id=${deviceId}`);
+            const relayResponse = await fetch(baseUrl + `/api/get_relays.php?device_id=${deviceId}`);
             const relayData = await relayResponse.json();
             
             if (relayData.success) {
@@ -224,23 +262,7 @@ setInterval(async () => {
         }
         
         // Kontakt-Status aktualisieren
-        try {
-            const contactResponse = await fetch(`api/get_contacts.php?device_id=${deviceId}`);
-            const contactData = await contactResponse.json();
-            
-            if (contactData.success) {
-                contactData.contacts.forEach(contact => {
-                    const statusElement = card.querySelector(`[data-contact-id="${contact.id}"] .badge`);
-                    if (statusElement) {
-                        statusElement.textContent = contact.state ? 'Geschlossen' : 'Offen';
-                        statusElement.classList.remove(contact.state ? 'bg-danger' : 'bg-success');
-                        statusElement.classList.add(contact.state ? 'bg-success' : 'bg-danger');
-                    }
-                });
-            }
-        } catch (error) {
-            console.error('Fehler beim Aktualisieren der Kontakte:', error);
-        }
+        updateContacts(deviceId);
     }
 }, 5000);
 </script>

@@ -5,6 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>IoT Gateway</title>
     
+    <!-- Favicons -->
+    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+    <link rel="manifest" href="site.webmanifest">
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
+    
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" 
           rel="stylesheet">
@@ -57,6 +64,13 @@
                                         <i class="fas fa-cog"></i> Profil
                                     </a>
                                 </li>
+                                <?php if (isset($_SESSION['is_admin']) && $_SESSION['is_admin']): ?>
+                                    <li>
+                                        <a class="dropdown-item" href="../admin/settings.php">
+                                            <i class="fas fa-cog me-2"></i>Einstellungen
+                                        </a>
+                                    </li>
+                                <?php endif; ?>
                                 <li>
                                     <hr class="dropdown-divider">
                                 </li>
@@ -72,3 +86,5 @@
             </div>
         </nav>
     <?php endif; ?>
+</body>
+</html>

@@ -1,0 +1,151 @@
+<?php
+require_once __DIR__ . '/Database.php';
+
+class Device {
+    private $db;
+    
+    public function __construct() {
+        $this->db = Database::getInstance()->getConnection();
+    }
+    
+    public function create($data) {
+        try {
+            $mqtt_topic = 'esp32/' . bin2hex(random_bytes(8));
+            
+            $stmt = $this->db->prepare("
+                INSERT INTO devices (name, description, user_id, mqtt_topic)
+                VALUES (?, ?, ?, ?)
+            ");
+            
+            return $stmt->execute([
+                $data['name'],
+                $data['description'],
+                $data['owner_id'],
+                $mqtt_topic
+            ]);
+        } catch (PDOException $e) {
+            error_log("DB Fehler beim Erstellen des Geräts: " . $e->getMessage());
+            throw $e;
+        }
+    }    
+    public function getById($id) {
+        $stmt = $this->db->prepare("
+            SELECT d.*, u.username as owner_name
+            FROM devices d
+            JOIN users u ON d.user_id = u.id
+            WHERE d.id = ?
+        ");
+        $stmt->execute([$id]);
+        return $stmt->fetch();
+    }
+    
+    public function getByUser($user_id) {
+        $stmt = $this->db->prepare("
+            SELECT * FROM devices
+            WHERE user_id = ?
+            ORDER BY name
+        ");
+        $stmt->execute([$user_id]);
+        return $stmt->fetchAll();
+    }
+    
+    public function getAll() {
+        $stmt = $this->db->query("
+            SELECT d.*, u.username as owner_name
+            FROM devices d
+            JOIN users u ON d.user_id = u.id
+            ORDER BY d.name
+        ");
+        return $stmt->fetchAll();
+    }
+    
+    public function update($id, $data) {
+        $sets = [];
+        $params = [];
+        
+        foreach ($data as $key => $value) {
+            $sets[] = "$key = ?";
+            $params[] = $value;
+        }
+        
+        $params[] = $id;
+        $sql = "UPDATE devices SET " . implode(', ', $sets) . " WHERE id = ?";
+        
+        $stmt = $this->db->prepare($sql);
+        return $stmt->execute($params);
+    }
+    
+    public function delete($id) {
+        $stmt = $this->db->prepare("DELETE FROM devices WHERE id = ?");
+        return $stmt->execute([$id]);
+    }
+    
+
+
+public function getTemperatures($device_id, $limit = 24) {
+    try {
+        $stmt = $this->db->prepare("
+            SELECT timestamp, value 
+            FROM sensor_data 
+            WHERE device_id = ? 
+            AND sensor_name IN ('DS18B20_1', 'DS18B20_2', 'BMP180_TEMP')
+            ORDER BY timestamp DESC 
+            LIMIT ?
+        ");
+        $stmt->bindValue(1, $device_id, PDO::PARAM_INT);
+        $stmt->bindValue(2, $limit, PDO::PARAM_INT);
+        $stmt->execute();
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        error_log("DB Fehler beim Abrufen der Temperaturen: " . $e->getMessage());
+        return [];
+    }
+}
+
+    
+    public function addTemperature($device_id, $value) {
+        $stmt = $this->db->prepare("
+            INSERT INTO temperatures (device_id, value)
+            VALUES (?, ?)
+        ");
+        return $stmt->execute([$device_id, $value]);
+    }
+    
+    public function getRelays($device_id) {
+        $stmt = $this->db->prepare("
+            SELECT * FROM relays
+            WHERE device_id = ?
+            ORDER BY name
+        ");
+        $stmt->execute([$device_id]);
+        return $stmt->fetchAll();
+    }
+    
+    public function toggleRelay($relay_id, $state) {
+        $stmt = $this->db->prepare("
+            UPDATE relays
+            SET state = ?, last_changed = CURRENT_TIMESTAMP
+            WHERE id = ?
+        ");
+        return $stmt->execute([$state, $relay_id]);
+    }
+    
+    public function getStatusContacts($device_id) {
+        $stmt = $this->db->prepare("
+            SELECT * FROM status_contacts
+            WHERE device_id = ?
+            ORDER BY name
+        ");
+        $stmt->execute([$device_id]);
+        return $stmt->fetchAll();
+    }
+    
+    public function updateStatusContact($contact_id, $state) {
+        $stmt = $this->db->prepare("
+            UPDATE status_contacts
+            SET state = ?, last_changed = CURRENT_TIMESTAMP
+            WHERE id = ?
+        ");
+        return $stmt->execute([$state, $contact_id]);
+    }
+}

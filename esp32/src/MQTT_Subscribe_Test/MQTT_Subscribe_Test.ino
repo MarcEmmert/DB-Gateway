@@ -78,11 +78,11 @@ void setup() {
     digitalWrite(RELAY3_PIN, LOW);
     digitalWrite(RELAY4_PIN, LOW);
     
-    // Initial Kontakt-Status lesen
-    contactStates[0] = digitalRead(CONTACT1_PIN);  // HIGH (1) = offen, LOW (0) = geschlossen
-    contactStates[1] = digitalRead(CONTACT2_PIN);
-    contactStates[2] = digitalRead(CONTACT3_PIN);
-    contactStates[3] = digitalRead(CONTACT4_PIN);
+    // Initial Kontakt-Status lesen und umdrehen (LOW = 1 = geschlossen, HIGH = 0 = offen)
+    contactStates[0] = !digitalRead(CONTACT1_PIN);
+    contactStates[1] = !digitalRead(CONTACT2_PIN);
+    contactStates[2] = !digitalRead(CONTACT3_PIN);
+    contactStates[3] = !digitalRead(CONTACT4_PIN);
     
     // Debug Ausgabe
     SerialMon.println("\n=== Initial Pin Setup ===");
@@ -343,12 +343,12 @@ void checkContacts() {
             SerialMon.println(rawValue == HIGH ? " (Offen)" : " (Geschlossen)");
         }
         
-        if (contactStates[i] != rawValue) {
-            contactStates[i] = rawValue;
+        if (contactStates[i] != !rawValue) {
+            contactStates[i] = !rawValue;
             changed = true;
             SerialMon.print("Kontakt "); SerialMon.print(i+1);
-            SerialMon.print(" Status geändert zu: "); SerialMon.print(rawValue);
-            SerialMon.println(rawValue == HIGH ? " (Offen)" : " (Geschlossen)");
+            SerialMon.print(" Status geändert zu: "); SerialMon.print(!rawValue);
+            SerialMon.println(!rawValue == HIGH ? " (Offen)" : " (Geschlossen)");
         }
     }
     
@@ -359,7 +359,7 @@ void checkContacts() {
 }
 
 void loop() {
-    static unsigned long lastUpdate = 0;
+    static unsigned long lastTempUpdate = 0;
     static unsigned long lastContactCheck = 0;
     unsigned long now = millis();
     
@@ -400,16 +400,22 @@ void loop() {
     }
     client.loop();
     
-    // Kontakte alle 100ms prüfen
-    if (now - lastContactCheck >= 100) {
+    // Timer für Temperaturmessung (5 Sekunden)
+    const unsigned long tempInterval = 5000;  // 5 Sekunden statt 30 Sekunden
+    
+    // Timer für Kontakt-Check (1 Sekunde)
+    const unsigned long contactInterval = 1000;
+    
+    // Kontakte alle 1 Sekunde prüfen
+    if (now - lastContactCheck >= contactInterval) {
         checkContacts();
         lastContactCheck = now;
     }
     
-    // Sensordaten alle 30 Sekunden senden
-    if (now - lastUpdate >= 30000) {
+    // Sensordaten alle 5 Sekunden senden
+    if (now - lastTempUpdate >= tempInterval) {
         publishSensorData();
-        lastUpdate = now;
+        lastTempUpdate = now;
     }
     
     // Kurze Pause

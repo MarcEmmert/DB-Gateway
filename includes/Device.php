@@ -183,21 +183,33 @@ class Device {
 
     public function getContactConfig($device_id) {
         $stmt = $this->db->prepare("
-            SELECT contact_number, display_name
-            FROM contact_config
+            SELECT contact_number, display_name as name, color_open, color_closed 
+            FROM contact_config 
             WHERE device_id = ?
         ");
         $stmt->execute([$device_id]);
-        return $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
+        
+        $config = [];
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $config[$row['contact_number']] = [
+                'name' => $row['name'],
+                'color_open' => $row['color_open'],
+                'color_closed' => $row['color_closed']
+            ];
+        }
+        return $config;
     }
 
-    public function updateContactConfig($device_id, $contact_number, $display_name) {
+    public function updateContactConfig($device_id, $contact_number, $display_name, $color_open = '#dc3545', $color_closed = '#28a745') {
         $stmt = $this->db->prepare("
-            INSERT INTO contact_config (device_id, contact_number, display_name)
-            VALUES (?, ?, ?)
-            ON DUPLICATE KEY UPDATE display_name = VALUES(display_name)
+            INSERT INTO contact_config (device_id, contact_number, display_name, color_open, color_closed) 
+            VALUES (?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE 
+                display_name = VALUES(display_name),
+                color_open = VALUES(color_open),
+                color_closed = VALUES(color_closed)
         ");
-        return $stmt->execute([$device_id, $contact_number, $display_name]);
+        return $stmt->execute([$device_id, $contact_number, $display_name, $color_open, $color_closed]);
     }
 
     public function getTemperatureHistory($device_id, $sensor_type, $timespan = '24h') {

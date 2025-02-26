@@ -101,10 +101,10 @@ include 'templates/header.php';
                         <?php foreach ($temperature_sensors as $sensor): ?>
                             <div class="col-md-4">
                                 <div class="border rounded p-3 text-center">
-                                    <div class="h3 mb-0"><?= number_format($sensor['value'], 1) ?><?= $sensor['unit'] ?></div>
+                                    <div class="h3 mb-0" id="sensor_<?= $sensor['sensor_type'] ?>"><?= number_format($sensor['value'], 1) ?><?= $sensor['unit'] ?></div>
                                     <div class="text-muted"><?= htmlspecialchars($sensor['display_name']) ?></div>
                                     <div class="small text-muted mt-2">
-                                        Aktualisiert: <?= date('d.m.Y H:i:s', strtotime($sensor['timestamp'])) ?>
+                                        Aktualisiert: <span id="sensor_<?= $sensor['sensor_type'] ?>_time"><?= date('d.m.Y H:i:s', strtotime($sensor['timestamp'])) ?></span>
                                     </div>
                                 </div>
                             </div>
@@ -118,10 +118,10 @@ include 'templates/header.php';
                         <?php foreach ($pressure_sensors as $sensor): ?>
                             <div class="col-md-6">
                                 <div class="border rounded p-3 text-center">
-                                    <div class="h3 mb-0"><?= number_format($sensor['value'], 1) ?><?= $sensor['unit'] ?></div>
+                                    <div class="h3 mb-0" id="sensor_<?= $sensor['sensor_type'] ?>"><?= number_format($sensor['value'], 1) ?><?= $sensor['unit'] ?></div>
                                     <div class="text-muted"><?= htmlspecialchars($sensor['display_name']) ?></div>
                                     <div class="small text-muted mt-2">
-                                        Aktualisiert: <?= date('d.m.Y H:i:s', strtotime($sensor['timestamp'])) ?>
+                                        Aktualisiert: <span id="sensor_<?= $sensor['sensor_type'] ?>_time"><?= date('d.m.Y H:i:s', strtotime($sensor['timestamp'])) ?></span>
                                     </div>
                                 </div>
                             </div>
@@ -159,8 +159,7 @@ include 'templates/header.php';
     <!-- Status-Kontakte -->
     <?php 
     $status_contacts = $device_manager->getStatusContacts($device_data['id']);
-    error_log("Status Contacts für Device " . $device_data['id'] . ":");
-    error_log(print_r($status_contacts, true));
+    $contact_config = $device_manager->getContactConfig($device_data['id']);
     ?>
     
     <?php if (!empty($status_contacts)): ?>
@@ -170,19 +169,27 @@ include 'templates/header.php';
             </div>
             <div class="card-body">
                 <div class="row g-3">
-                    <?php foreach ($status_contacts as $contact): ?>
-                        <div class="col-md-3">
-                            <div class="border rounded p-3 text-center" data-contact-id="<?= $contact['id'] ?>">
-                                <div class="mb-2"><?= htmlspecialchars($contact['display_name']) ?></div>
-                                <?php 
-                                    // state=1 bedeutet geschlossen (grün), state=0 bedeutet offen (rot)
-                                    $isOpen = $contact['state'] == 0;
-                                ?>
-                                <span class="badge <?= $isOpen ? 'bg-danger' : 'bg-success' ?>">
-                                    <?= $isOpen ? 'Offen' : 'Geschlossen' ?>
-                                </span>
-                                <div class="small text-muted mt-2">
-                                    Zuletzt geändert: <?= date('d.m.Y H:i:s', strtotime($contact['last_changed'])) ?>
+                    <?php foreach ($status_contacts as $contact): 
+                        $config = $contact_config[$contact['contact_number']] ?? [];
+                        $isOpen = $contact['state'] == 0;
+                        $colorOpen = $config['color_open'] ?? '#dc3545';
+                        $colorClosed = $config['color_closed'] ?? '#28a745';
+                    ?>
+                        <div class="col-md-3 mb-3">
+                            <div class="card h-100">
+                                <div class="card-body text-center">
+                                    <h5 class="card-title">
+                                        <?= htmlspecialchars($config['name'] ?? 'Kontakt ' . $contact['contact_number']) ?>
+                                    </h5>
+                                    <span class="badge" 
+                                          style="background-color: <?= $isOpen ? $colorOpen : $colorClosed ?>"
+                                          data-color-open="<?= $colorOpen ?>"
+                                          data-color-closed="<?= $colorClosed ?>">
+                                        <?= $isOpen ? 'Offen' : 'Geschlossen' ?>
+                                    </span>
+                                    <div class="small text-muted mt-2">
+                                        Zuletzt geändert: <?= date('d.m.Y H:i:s', strtotime($contact['last_changed'])) ?>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -342,68 +349,111 @@ function showErrorDialog(message, details, context) {
     document.body.appendChild(dialogContainer);
 }
 
-// Automatische Aktualisierung der Status alle 2 Sekunden
-setInterval(async () => {
-    // Device ID aus der URL holen
-    const urlParams = new URLSearchParams(window.location.search);
-    const deviceId = urlParams.get('id');  
-    if (!deviceId) return;
-    
-    // Relais-Status aktualisieren
-    try {
-        const relayResponse = await fetch(`api/get_relays.php?device_id=${deviceId}`);
-        const relayData = await relayResponse.json();
-        
-        if (relayData.success) {
-            relayData.relays.forEach(relay => {
-                const button = document.querySelector(`button[data-relay-id="${relay.id}"]`);
-                if (button) {
-                    const displayName = button.innerHTML.split('<br>')[0];
-                    button.innerHTML = `${displayName}<br><small>${relay.state ? 'An' : 'Aus'}</small>`;
-                    button.classList.remove(relay.state ? 'btn-secondary' : 'btn-success');
-                    button.classList.add(relay.state ? 'btn-success' : 'btn-secondary');
-                    button.onclick = () => toggleRelay(deviceId, relay.id, relay.state ? 0 : 1);
-                }
-            });
-        }
-    } catch (error) {
-        console.error('Fehler beim Aktualisieren der Relais:', error);
-    }
-    
-    // Kontakt-Status aktualisieren
-    try {
-        const contactResponse = await fetch(`api/get_contacts.php?device_id=${deviceId}`);
-        const contactData = await contactResponse.json();
-        console.log('Contact API Response:', contactData);
-        
-        if (contactData.success && contactData.contacts) {
-            contactData.contacts.forEach(contact => {
-                const container = document.querySelector(`div[data-contact-id="${contact.id}"]`);
-                console.log('Updating contact:', contact);
-                console.log('Found container:', container);
+// Funktion zum Aktualisieren der Sensorwerte
+function updateSensorData() {
+    // Teste zuerst die API-Verbindung
+    fetch('api/test_sensor.php')
+        .then(response => response.json())
+        .then(testData => {
+            console.log('API Test Response:', testData);
+            
+            if (testData.error) {
+                throw new Error(`API Test failed: ${testData.message}`);
+            }
+            
+            // Wenn der Test erfolgreich war, hole Sensordaten
+            return fetch('api/get_sensor_data.php?device_id=<?php echo $device_data['id']; ?>');
+        })
+        .then(response => {
+            if (!response.ok) {
+                return response.text().then(text => {
+                    console.error('API Response Text:', text);
+                    throw new Error(`HTTP error! status: ${response.status}, body: ${text}`);
+                });
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Sensor API Response:', data);
+            
+            if (data.error) {
+                console.error('API Error:', data.message);
+                return;
+            }
+            
+            // Wenn wir Sensordaten haben
+            if (data.data && Array.isArray(data.data)) {
+                // Gruppiere die Daten nach Sensor-Typ
+                const latestValues = {};
+                data.data.forEach(reading => {
+                    // Nur den neuesten Wert pro Sensor-Typ speichern
+                    if (!latestValues[reading.sensor_type]) {
+                        latestValues[reading.sensor_type] = reading.value;
+                    }
+                });
                 
-                if (container) {
-                    const badge = container.querySelector('.badge');
-                    if (badge) {
-                        // state=1 bedeutet geschlossen (grün), state=0 bedeutet offen (rot)
-                        const isOpen = contact.state == 0;
-                        console.log(`Contact ${contact.id} state: ${contact.state} -> isOpen: ${isOpen}`);
-                        
-                        badge.textContent = isOpen ? 'Offen' : 'Geschlossen';
-                        badge.classList.remove(isOpen ? 'bg-success' : 'bg-danger');
-                        badge.classList.add(isOpen ? 'bg-danger' : 'bg-success');
+                // Update der Anzeige
+                Object.entries(latestValues).forEach(([type, value]) => {
+                    const element = document.getElementById('sensor_' + type);
+                    const timeElement = document.getElementById('sensor_' + type + '_time');
+                    if (element) {
+                        const unit = type.includes('PRESSURE') ? ' hPa' : ' °C';
+                        element.textContent = Number(value).toFixed(1) + unit;
+                        if (timeElement) {
+                            timeElement.textContent = new Date().toLocaleString('de-DE');
+                        }
                     }
-                    
-                    const timeElement = container.querySelector('.text-muted');
-                    if (timeElement) {
-                        const date = new Date(contact.last_changed);
-                        timeElement.textContent = `Zuletzt geändert: ${date.toLocaleString('de-DE')}`;
-                    }
-                }
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error updating sensors:', error);
+            console.error('Error details:', {
+                message: error.message,
+                stack: error.stack
             });
-        }
-    } catch (error) {
-        console.error('Fehler beim Aktualisieren der Kontakte:', error);
+            // Nach einem Fehler warten wir 30 Sekunden bevor wir es wieder versuchen
+            setTimeout(updateSensorData, 30000);
+        });
+}
+
+// Alle 5 Sekunden aktualisieren
+const sensorUpdateInterval = setInterval(updateSensorData, 5000);
+
+// Initial beim Laden der Seite
+updateSensorData();
+
+// Funktion zum Aktualisieren der Kontakte
+function updateContacts(deviceId) {
+    fetch(`api/get_contacts.php?device_id=${deviceId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.contacts) {
+                data.contacts.forEach(contact => {
+                    const contactDiv = document.querySelector(`[data-contact-id="${contact.id}"]`);
+                    if (contactDiv) {
+                        const badge = contactDiv.querySelector('.badge');
+                        if (badge) {
+                            // Hole die gespeicherten Farben aus data-Attributen
+                            const colorOpen = badge.getAttribute('data-color-open') || '#dc3545';
+                            const colorClosed = badge.getAttribute('data-color-closed') || '#28a745';
+                            
+                            const isOpen = contact.state == 0;
+                            badge.style.backgroundColor = isOpen ? colorOpen : colorClosed;
+                            badge.textContent = isOpen ? 'Offen' : 'Geschlossen';
+                        }
+                    }
+                });
+            }
+        });
+}
+
+// Automatische Aktualisierung alle 5 Sekunden
+setInterval(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const deviceId = urlParams.get('id');
+    if (deviceId) {
+        updateContacts(deviceId);
     }
-}, 2000);
+}, 5000);
 </script>

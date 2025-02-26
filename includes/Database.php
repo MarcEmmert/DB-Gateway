@@ -10,6 +10,7 @@ class Database {
         }
         
         $this->config = require __DIR__ . '/../config.php';
+        error_log("Database config loaded: " . print_r($this->config, true));
         
         if (!isset($this->config['db']) || !is_array($this->config['db'])) {
             throw new Exception("Invalid database configuration format");
@@ -36,6 +37,7 @@ class Database {
             }
             
             error_log("Attempting database connection with DSN: " . preg_replace('/password=([^;]*)/', 'password=***', $dsn));
+            error_log("Using database user: " . $dbConfig['user']);
             
             $this->conn = new PDO(
                 $dsn,
@@ -56,6 +58,7 @@ class Database {
             
         } catch (PDOException $e) {
             error_log("Database connection failed: " . $e->getMessage());
+            error_log("Connection trace: " . $e->getTraceAsString());
             throw $e;
         }
     }

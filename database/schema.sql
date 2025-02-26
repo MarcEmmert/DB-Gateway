@@ -24,29 +24,25 @@ CREATE TABLE devices (
     INDEX idx_mqtt_topic (mqtt_topic)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Sensor-Daten-Tabelle
-CREATE TABLE sensor_data (
+-- Temperatur-Tabelle
+CREATE TABLE temperatures (
     id INT AUTO_INCREMENT PRIMARY KEY,
     device_id INT NOT NULL,
-    sensor_type ENUM('DS18B20_1', 'DS18B20_2', 'BMP180_TEMP', 'BMP180_PRESSURE') NOT NULL,
-    value DECIMAL(8,2) NOT NULL,
+    value DECIMAL(5,2) NOT NULL,
     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE,
-    INDEX idx_device_timestamp (device_id, timestamp),
-    INDEX idx_sensor_type (sensor_type)
+    INDEX idx_device_timestamp (device_id, timestamp)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Relais-Tabelle
 CREATE TABLE relays (
     id INT AUTO_INCREMENT PRIMARY KEY,
     device_id INT NOT NULL,
-    relay_number TINYINT NOT NULL CHECK (relay_number BETWEEN 1 AND 4),
     name VARCHAR(50) NOT NULL,
     state BOOLEAN DEFAULT FALSE,
     last_changed TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE,
-    UNIQUE KEY unique_device_relay (device_id, relay_number),
     INDEX idx_device_id (device_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -54,13 +50,11 @@ CREATE TABLE relays (
 CREATE TABLE status_contacts (
     id INT AUTO_INCREMENT PRIMARY KEY,
     device_id INT NOT NULL,
-    contact_number TINYINT NOT NULL CHECK (contact_number BETWEEN 1 AND 4),
     name VARCHAR(50) NOT NULL,
     state BOOLEAN DEFAULT FALSE,
     last_changed TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE,
-    UNIQUE KEY unique_device_contact (device_id, contact_number),
     INDEX idx_device_id (device_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -97,14 +91,6 @@ END;//
 
 CREATE TRIGGER update_device_last_seen_status
 AFTER UPDATE ON status_contacts
-FOR EACH ROW
-BEGIN
-    UPDATE devices SET last_seen = CURRENT_TIMESTAMP
-    WHERE id = NEW.device_id;
-END;//
-
-CREATE TRIGGER update_device_last_seen_sensor
-AFTER INSERT ON sensor_data
 FOR EACH ROW
 BEGIN
     UPDATE devices SET last_seen = CURRENT_TIMESTAMP
